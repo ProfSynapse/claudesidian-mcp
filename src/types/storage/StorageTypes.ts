@@ -4,7 +4,7 @@
 // Dependencies: Replaces monolithic data structures with individual file formats
 
 import { WorkspaceContext } from '../../database/types/workspace/WorkspaceTypes';
-import { WorkspaceStateSnapshot } from '../../database/types/session/SessionTypes';
+import { WorkspaceState } from '../../database/types/session/SessionTypes';
 import { TraceMetadata } from '../../database/types/memory/MemoryTypes';
 
 /**
@@ -148,13 +148,13 @@ export interface MemoryTrace {
 }
 
 /**
- * State snapshot within session
+ * State data within session
  */
 export interface StateData {
   id: string;
   name: string;
   created: number;
-  snapshot: WorkspaceStateSnapshot;
+  state: WorkspaceState;
 }
 
 /**

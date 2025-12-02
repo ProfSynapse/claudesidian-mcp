@@ -87,7 +87,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             let continuationSessionId: string | undefined;
             if (params.continueExistingSession !== false) {
                 // Continue with original session ID
-                continuationSessionId = stateResult.data.stateSnapshot.sessionId;
+                continuationSessionId = stateResult.data.loadedState.sessionId;
             } else {
                 // Create new continuation session
                 const continuationResult = await this.createContinuationSession(
@@ -164,15 +164,15 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
     private async loadStateData(workspaceId: string, sessionId: string, stateIdentifier: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
             // Get state from memory service using unified lookup (ID or name)
-            const stateSnapshot = await memoryService.getStateByNameOrId(workspaceId, sessionId, stateIdentifier);
-            if (!stateSnapshot) {
+            const loadedState = await memoryService.getStateByNameOrId(workspaceId, sessionId, stateIdentifier);
+            if (!loadedState) {
                 return { success: false, error: `State '${stateIdentifier}' not found (searched by both name and ID)` };
             }
 
             // Get related traces if available using the actual state's session ID
             let relatedTraces: any[] = [];
             try {
-                const effectiveSessionId = stateSnapshot.sessionId || sessionId;
+                const effectiveSessionId = loadedState.sessionId || sessionId;
                 if (effectiveSessionId && effectiveSessionId !== 'current') {
                     relatedTraces = await memoryService.getMemoryTraces(workspaceId, effectiveSessionId);
                 }
@@ -183,7 +183,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             return {
                 success: true,
                 data: {
-                    stateSnapshot,
+                    loadedState,
                     relatedTraces: relatedTraces || []
                 }
             };
@@ -198,24 +198,24 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
      */
     private async processAndRestoreContext(stateData: any, workspaceService: WorkspaceService, memoryService: MemoryService): Promise<any> {
         try {
-            const { stateSnapshot, relatedTraces } = stateData;
-            
+            const { loadedState, relatedTraces } = stateData;
+
             // Get workspace for context
             let workspace: any;
             try {
-                workspace = await workspaceService.getWorkspace(stateSnapshot.workspaceId);
+                workspace = await workspaceService.getWorkspace(loadedState.workspaceId);
             } catch {
                 workspace = { name: 'Unknown Workspace' };
             }
 
-            // Extract state snapshot details
-            const snapshot = stateSnapshot.snapshot || {};
-            
+            // Extract state context details (using new naming: context instead of snapshot)
+            const stateContext = loadedState.context || {};
+
             // Build context summary (consolidated from FileCollector logic)
-            const summary = this.buildContextSummary(stateSnapshot, workspace, snapshot);
+            const summary = this.buildContextSummary(loadedState, workspace, stateContext);
 
             // Process active files (consolidated file collection logic)
-            const activeFiles = snapshot.activeFiles || [];
+            const activeFiles = stateContext.activeFiles || [];
             const associatedNotes = this.processActiveFiles(activeFiles);
 
             // Process memory traces (consolidated from TraceProcessor logic)
@@ -224,16 +224,16 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             return {
                 summary,
                 associatedNotes,
-                stateCreatedAt: new Date(stateSnapshot.created).toISOString(),
-                originalSessionId: stateSnapshot.sessionId,
+                stateCreatedAt: new Date(loadedState.created).toISOString(),
+                originalSessionId: loadedState.sessionId,
                 workspace,
                 restoredContext: {
-                    conversationContext: snapshot.conversationContext,
-                    activeTask: snapshot.activeTask,
+                    conversationContext: stateContext.conversationContext,
+                    activeTask: stateContext.activeTask,
                     activeFiles,
-                    nextSteps: snapshot.nextSteps || [],
-                    reasoning: snapshot.reasoning,
-                    workspaceContext: snapshot.workspaceContext
+                    nextSteps: stateContext.nextSteps || [],
+                    reasoning: stateContext.reasoning,
+                    workspaceContext: stateContext.workspaceContext
                 },
                 traces: processedTraces
             };
@@ -241,10 +241,10 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         } catch (error) {
             console.warn('Error processing context:', error);
             return {
-                summary: `State "${stateData.stateSnapshot.name}" loaded successfully`,
+                summary: `State "${stateData.loadedState.name}" loaded successfully`,
                 associatedNotes: [],
                 stateCreatedAt: new Date().toISOString(),
-                originalSessionId: stateData.stateSnapshot.sessionId,
+                originalSessionId: stateData.loadedState.sessionId,
                 workspace: { name: 'Unknown Workspace' },
                 restoredContext: {
                     conversationContext: 'Context restoration incomplete',
@@ -268,16 +268,16 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         memoryService: MemoryService
     ): Promise<{success: boolean; error?: string; sessionId?: string}> {
         try {
-            const stateSnapshot = stateData.stateSnapshot;
-            const snapshot = stateSnapshot.snapshot || {};
+            const loadedState = stateData.loadedState;
+            const stateContext = loadedState.context || {};
 
             // Create continuation session
             const continuationData = {
-                workspaceId: stateSnapshot.workspaceId,
-                name: params.sessionName || `Restored from "${stateSnapshot.name}"`,
-                description: params.sessionDescription || `Resuming work from state saved on ${new Date(stateSnapshot.created).toLocaleDateString()}`,
-                sessionGoal: params.restorationGoal || `Resume: ${snapshot.activeTask}`,
-                previousSessionId: stateSnapshot.sessionId !== 'current' ? stateSnapshot.sessionId : undefined,
+                workspaceId: loadedState.workspaceId,
+                name: params.sessionName || `Restored from "${loadedState.name}"`,
+                description: params.sessionDescription || `Resuming work from state saved on ${new Date(loadedState.created).toLocaleDateString()}`,
+                sessionGoal: params.restorationGoal || `Resume: ${stateContext.activeTask}`,
+                previousSessionId: loadedState.sessionId !== 'current' ? loadedState.sessionId : undefined,
                 isActive: true,
                 toolCalls: 0,
                 startTime: Date.now()
@@ -297,35 +297,35 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
      * Generate restoration summary (consolidated from RestorationSummaryGenerator logic)
      */
     private generateRestorationSummary(stateData: any, contextResult: any, continuationSessionId?: string, restorationGoal?: string): any {
-        const stateSnapshot = stateData.stateSnapshot;
-        const snapshot = stateSnapshot.snapshot || {};
+        const loadedState = stateData.loadedState;
+        const stateContext = loadedState.context || {};
 
         const summary = {
-            stateName: stateSnapshot.name,
-            originalCreationTime: new Date(stateSnapshot.created).toLocaleString(),
-            workspaceId: stateSnapshot.workspaceId,
+            stateName: loadedState.name,
+            originalCreationTime: new Date(loadedState.created).toLocaleString(),
+            workspaceId: loadedState.workspaceId,
             workspaceName: contextResult.workspace.name,
-            originalSessionId: stateSnapshot.sessionId,
+            originalSessionId: loadedState.sessionId,
             continuationSessionId,
             restorationTime: new Date().toLocaleString(),
             restorationGoal,
             contextSummary: contextResult.summary,
-            activeTask: snapshot.activeTask,
-            activeFiles: snapshot.activeFiles || [],
-            nextSteps: snapshot.nextSteps || [],
-            reasoning: snapshot.reasoning,
+            activeTask: stateContext.activeTask,
+            activeFiles: stateContext.activeFiles || [],
+            nextSteps: stateContext.nextSteps || [],
+            reasoning: stateContext.reasoning,
             continuationHistory: undefined as any[] | undefined
         };
 
         // Add continuation history if applicable
         const continuationHistory = [];
-        if (stateSnapshot.sessionId !== 'current') {
+        if (loadedState.sessionId !== 'current') {
             continuationHistory.push({
-                timestamp: stateSnapshot.created,
-                description: `Originally saved from session ${stateSnapshot.sessionId}`
+                timestamp: loadedState.created,
+                description: `Originally saved from session ${loadedState.sessionId}`
             });
         }
-        
+
         if (continuationSessionId) {
             continuationHistory.push({
                 timestamp: Date.now(),
@@ -351,12 +351,12 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
         memoryService: MemoryService
     ): Promise<void> {
         try {
-            const stateSnapshot = stateData.stateSnapshot;
-            const snapshot = stateSnapshot.snapshot || {};
-            
+            const loadedState = stateData.loadedState;
+            const stateContext = loadedState.context || {};
+
             const traceContent = this.buildRestorationTraceContent(
-                stateSnapshot,
-                snapshot,
+                loadedState,
+                stateContext,
                 contextResult,
                 continuationSessionId,
                 restorationGoal
@@ -365,13 +365,13 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             // Create restoration memory trace
             await memoryService.createMemoryTrace({
                 sessionId: continuationSessionId,
-                workspaceId: stateSnapshot.workspaceId,
+                workspaceId: loadedState.workspaceId,
                 content: traceContent,
                 type: 'state_restoration',
                 timestamp: Date.now(),
                 metadata: {
                     tool: 'LoadStateMode',
-                    params: { stateId: stateData.stateSnapshot.stateId },
+                    params: { stateId: stateData.loadedState.stateId },
                     result: { continuationSessionId },
                     relatedFiles: contextResult.associatedNotes || []
                 }
@@ -385,40 +385,40 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
 
     /**
      * Prepare final result
-     * 
+     *
      * Result structure explanation:
-     * - summary: Generated by buildContextSummary() from state snapshot and workspace data
+     * - summary: Generated by buildContextSummary() from loaded state and workspace data
      * - associatedNotes: Processed active files (limited to 20) from processActiveFiles()
      * - continuationHistory: Restoration timeline from generateRestorationSummary()
-     * - activeTask, activeFiles, nextSteps, reasoning: Direct from state snapshot.snapshot
+     * - activeTask, activeFiles, nextSteps, reasoning: Direct from state.context
      */
     private prepareFinalResult(stateData: any, contextResult: any, summaryResult: any, continuationSessionId?: string): StateResult {
-        const stateSnapshot = stateData.stateSnapshot;
-        
+        const loadedState = stateData.loadedState;
+
         const resultData: any = {
-            stateId: stateSnapshot.id,
-            name: stateSnapshot.name,
-            workspaceId: stateSnapshot.workspaceId,
-            sessionId: stateSnapshot.sessionId,
-            created: stateSnapshot.created,
+            stateId: loadedState.id,
+            name: loadedState.name,
+            workspaceId: loadedState.workspaceId,
+            sessionId: loadedState.sessionId,
+            created: loadedState.created,
             newSessionId: continuationSessionId,
             restoredContext: {
                 summary: contextResult.summary,                    // From buildContextSummary()
                 associatedNotes: contextResult.associatedNotes,   // From processActiveFiles()
                 stateCreatedAt: contextResult.stateCreatedAt,     // ISO string of state creation
-                originalSessionId: stateSnapshot.sessionId,      // Original session ID
+                originalSessionId: loadedState.sessionId,         // Original session ID
                 continuationHistory: summaryResult.continuationHistory, // From generateRestorationSummary()
-                activeTask: summaryResult.activeTask,            // From state snapshot.activeTask
-                activeFiles: summaryResult.activeFiles,          // From state snapshot.activeFiles
-                nextSteps: summaryResult.nextSteps,              // From state snapshot.nextSteps
-                reasoning: summaryResult.reasoning,              // From state snapshot.reasoning
+                activeTask: summaryResult.activeTask,            // From state.context.activeTask
+                activeFiles: summaryResult.activeFiles,          // From state.context.activeFiles
+                nextSteps: summaryResult.nextSteps,              // From state.context.nextSteps
+                reasoning: summaryResult.reasoning,              // From state.context.reasoning
                 restorationGoal: summaryResult.restorationGoal  // From input params
             }
         };
 
-        const contextString = continuationSessionId 
-            ? `Loaded state "${stateSnapshot.name}" and created continuation session ${continuationSessionId}. Ready to resume: ${summaryResult.activeTask}`
-            : `Loaded state "${stateSnapshot.name}". Context restored: ${summaryResult.activeTask}`;
+        const contextString = continuationSessionId
+            ? `Loaded state "${loadedState.name}" and created continuation session ${continuationSessionId}. Ready to resume: ${summaryResult.activeTask}`
+            : `Loaded state "${loadedState.name}". Context restored: ${summaryResult.activeTask}`;
 
         return this.prepareResult(
             true,
@@ -431,32 +431,32 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
     /**
      * Helper methods (consolidated from various services)
      */
-    private buildContextSummary(stateSnapshot: any, workspace: any, snapshot: any): string {
+    private buildContextSummary(loadedState: any, workspace: any, stateContext: any): string {
         const parts: string[] = [];
-        
-        parts.push(`Loaded state: "${stateSnapshot.name}"`);
+
+        parts.push(`Loaded state: "${loadedState.name}"`);
         parts.push(`Workspace: ${workspace.name}`);
-        
-        if (snapshot.activeTask) {
-            parts.push(`Active task: ${snapshot.activeTask}`);
+
+        if (stateContext.activeTask) {
+            parts.push(`Active task: ${stateContext.activeTask}`);
         }
-        
-        if (snapshot.conversationContext) {
-            const contextPreview = snapshot.conversationContext.length > 100 
-                ? snapshot.conversationContext.substring(0, 100) + '...'
-                : snapshot.conversationContext;
+
+        if (stateContext.conversationContext) {
+            const contextPreview = stateContext.conversationContext.length > 100
+                ? stateContext.conversationContext.substring(0, 100) + '...'
+                : stateContext.conversationContext;
             parts.push(`Context: ${contextPreview}`);
         }
-        
-        if (snapshot.activeFiles && snapshot.activeFiles.length > 0) {
-            parts.push(`${snapshot.activeFiles.length} active file${snapshot.activeFiles.length === 1 ? '' : 's'}`);
+
+        if (stateContext.activeFiles && stateContext.activeFiles.length > 0) {
+            parts.push(`${stateContext.activeFiles.length} active file${stateContext.activeFiles.length === 1 ? '' : 's'}`);
         }
-        
-        if (snapshot.nextSteps && snapshot.nextSteps.length > 0) {
-            parts.push(`${snapshot.nextSteps.length} next step${snapshot.nextSteps.length === 1 ? '' : 's'} defined`);
+
+        if (stateContext.nextSteps && stateContext.nextSteps.length > 0) {
+            parts.push(`${stateContext.nextSteps.length} next step${stateContext.nextSteps.length === 1 ? '' : 's'} defined`);
         }
-        
-        const stateAge = Date.now() - stateSnapshot.created;
+
+        const stateAge = Date.now() - loadedState.created;
         const daysAgo = Math.floor(stateAge / (1000 * 60 * 60 * 24));
         if (daysAgo > 0) {
             parts.push(`Created ${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`);
@@ -468,7 +468,7 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
                 parts.push('Created recently');
             }
         }
-        
+
         return parts.join('. ');
     }
 
@@ -492,36 +492,36 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
     }
 
     private buildRestorationTraceContent(
-        stateSnapshot: any,
-        snapshot: any,
+        loadedState: any,
+        stateContext: any,
         contextResult: any,
         continuationSessionId: string,
         restorationGoal?: string
     ): string {
         const parts: string[] = [];
-        
-        parts.push(`State Restoration: Loaded state "${stateSnapshot.name}"`);
-        parts.push(`Original state created: ${new Date(stateSnapshot.created).toLocaleString()}`);
+
+        parts.push(`State Restoration: Loaded state "${loadedState.name}"`);
+        parts.push(`Original state created: ${new Date(loadedState.created).toLocaleString()}`);
         parts.push(`Continuation session created: ${continuationSessionId}`);
-        
+
         if (restorationGoal) {
             parts.push(`Restoration goal: ${restorationGoal}`);
         }
-        
-        parts.push(`Active task: ${snapshot.activeTask}`);
-        
-        if (snapshot.conversationContext) {
-            parts.push(`Previous context: ${snapshot.conversationContext}`);
+
+        parts.push(`Active task: ${stateContext.activeTask}`);
+
+        if (stateContext.conversationContext) {
+            parts.push(`Previous context: ${stateContext.conversationContext}`);
         }
-        
-        if (snapshot.nextSteps && snapshot.nextSteps.length > 0) {
-            parts.push(`Next steps: ${snapshot.nextSteps.slice(0, 3).join(', ')}${snapshot.nextSteps.length > 3 ? '...' : ''}`);
+
+        if (stateContext.nextSteps && stateContext.nextSteps.length > 0) {
+            parts.push(`Next steps: ${stateContext.nextSteps.slice(0, 3).join(', ')}${stateContext.nextSteps.length > 3 ? '...' : ''}`);
         }
-        
-        if (snapshot.activeFiles && snapshot.activeFiles.length > 0) {
-            parts.push(`Active files: ${snapshot.activeFiles.slice(0, 5).join(', ')}`);
+
+        if (stateContext.activeFiles && stateContext.activeFiles.length > 0) {
+            parts.push(`Active files: ${stateContext.activeFiles.slice(0, 5).join(', ')}`);
         }
-        
+
         return parts.join('\n\n');
     }
 

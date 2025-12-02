@@ -8,7 +8,7 @@ import { WorkspaceService } from '../../../services/WorkspaceService';
 import {
   WorkspaceMemoryTrace,
   WorkspaceSession,
-  WorkspaceStateSnapshot
+  WorkspaceState
 } from '../../../database/workspace-types';
 import { normalizeLegacyTraceMetadata } from '../../../services/memory/LegacyTraceMetadataNormalizer';
 
@@ -215,14 +215,14 @@ export class MemoryService {
   async saveState(
     workspaceId: string,
     sessionId: string,
-    snapshot: WorkspaceStateSnapshot,
+    stateData: WorkspaceState,
     name?: string
   ): Promise<string> {
     const state = await this.workspaceService.addState(workspaceId, sessionId, {
-      id: snapshot.id,  // Pass the ID from the snapshot to preserve it
-      name: name || snapshot.name || 'Unnamed State',
-      created: snapshot.created || Date.now(),
-      snapshot
+      id: stateData.id,  // Pass the ID to preserve it
+      name: name || stateData.name || 'Unnamed State',
+      created: stateData.created || Date.now(),
+      state: stateData
     });
 
     return state.id;
@@ -235,14 +235,14 @@ export class MemoryService {
     workspaceId: string,
     sessionId: string,
     stateId: string
-  ): Promise<WorkspaceStateSnapshot | null> {
-    const state = await this.workspaceService.getState(workspaceId, sessionId, stateId);
+  ): Promise<WorkspaceState | null> {
+    const stateData = await this.workspaceService.getState(workspaceId, sessionId, stateId);
 
-    if (!state) {
+    if (!stateData) {
       return null;
     }
 
-    return state.snapshot;
+    return stateData.state;
   }
 
   /**
@@ -253,14 +253,14 @@ export class MemoryService {
     workspaceId: string,
     sessionId: string,
     identifier: string
-  ): Promise<WorkspaceStateSnapshot | null> {
-    const state = await this.workspaceService.getStateByNameOrId(workspaceId, sessionId, identifier);
+  ): Promise<WorkspaceState | null> {
+    const stateData = await this.workspaceService.getStateByNameOrId(workspaceId, sessionId, identifier);
 
-    if (!state) {
+    if (!stateData) {
       return null;
     }
 
-    return state.snapshot;
+    return stateData.state;
   }
 
   /**
@@ -270,7 +270,7 @@ export class MemoryService {
     id: string;
     name: string;
     created: number;
-    snapshot: WorkspaceStateSnapshot;
+    state: WorkspaceState;
   }>> {
     const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
@@ -291,7 +291,7 @@ export class MemoryService {
       id: string;
       name: string;
       created: number;
-      snapshot: WorkspaceStateSnapshot;
+      state: WorkspaceState;
     }> = [];
 
     for (const session of Object.values(workspace.sessions)) {
@@ -310,7 +310,7 @@ export class MemoryService {
     stateId: string,
     updates: Partial<{
       name: string;
-      snapshot: WorkspaceStateSnapshot;
+      state: WorkspaceState;
     }>
   ): Promise<void> {
     const workspace = await this.workspaceService.getWorkspace(workspaceId);

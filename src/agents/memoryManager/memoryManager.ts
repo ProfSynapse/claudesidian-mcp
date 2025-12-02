@@ -23,8 +23,8 @@ import { LoadWorkspaceMode } from './modes/workspaces/LoadWorkspaceMode';
 import { UpdateWorkspaceMode } from './modes/workspaces/UpdateWorkspaceMode';
 
 /**
- * Agent for managing workspace memory, sessions, and state snapshots
- * 
+ * Agent for managing workspace memory, sessions, and states
+ *
  * CONSOLIDATED ARCHITECTURE:
  * - 15 files total (down from 50+)
  * - 3 session modes: create/load/manage

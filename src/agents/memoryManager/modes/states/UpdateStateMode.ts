@@ -120,9 +120,9 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         }
 
         // Apply updates using actual state ID
-        const updatedSnapshot = { ...existingState, ...updates };
+        const stateWithUpdates = { ...existingState, ...updates };
         const actualStateId = existingState.id || params.stateId;
-        await memoryService.updateState(workspaceId, sessionId, actualStateId, updatedSnapshot);
+        await memoryService.updateState(workspaceId, sessionId, actualStateId, stateWithUpdates);
 
         // Use updated state for result
         const updatedState = await memoryService.getState(workspaceId, sessionId, actualStateId);
@@ -194,12 +194,12 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
                 age: this.calculateStateAge(state.created || state.timestamp)
             };
 
-            if (includeContext && state.snapshot) {
+            if (includeContext && state.state?.context) {
                 enhanced.context = {
-                    files: state.snapshot.activeFiles || [],
+                    files: state.state.context.activeFiles || [],
                     traceCount: 0, // Could be enhanced to count related traces
-                    tags: state.state?.metadata?.tags || [],
-                    summary: state.snapshot.activeTask || 'No active task recorded'
+                    tags: state.state?.state?.metadata?.tags || [],
+                    summary: state.state.context.activeTask || 'No active task recorded'
                 };
             }
 

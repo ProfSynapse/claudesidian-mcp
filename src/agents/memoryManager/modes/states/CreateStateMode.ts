@@ -109,11 +109,11 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 return this.prepareResult(false, undefined, workspaceResult.error, extractContextFromParams(params));
             }
 
-            // Phase 4: Build state snapshot (consolidated from StateCreator logic)
-            const snapshotResult = await this.buildStateSnapshot(params, workspaceResult.data, workspaceService);
+            // Phase 4: Build state context (consolidated from StateCreator logic)
+            const contextResult = await this.buildStateContext(params, workspaceResult.data, workspaceService);
 
             // Phase 5: Create and persist state (consolidated persistence logic)
-            const persistResult = await this.createAndPersistState(params, workspaceResult.data, snapshotResult, memoryService);
+            const persistResult = await this.createAndPersistState(params, workspaceResult.data, contextResult, memoryService);
             if (!persistResult.success) {
                 return this.prepareResult(false, undefined, persistResult.error, extractContextFromParams(params));
             }
@@ -138,8 +138,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             // Phase 7: Prepare final result
             return this.prepareFinalResult(
                 persistResult.stateId,
-                persistResult.savedSnapshot,
-                snapshotResult,
+                persistResult.savedState,
+                contextResult,
                 workspaceResult.data,
                 startTime,
                 params
@@ -247,9 +247,9 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     }
 
     /**
-     * Build state snapshot (consolidated from StateCreator logic)
+     * Build state context (consolidated from StateCreator logic)
      */
-    private async buildStateSnapshot(params: CreateStateParams, workspaceData: any, workspaceService: WorkspaceService): Promise<any> {
+    private async buildStateContext(params: CreateStateParams, workspaceData: any, workspaceService: WorkspaceService): Promise<any> {
         const { workspace } = workspaceData;
         
         // Extract or create workspace context
@@ -269,8 +269,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             };
         }
 
-        // Build the state snapshot from LLM input
-        const snapshot = {
+        // Build the state context from LLM input
+        const context = {
             workspaceContext: currentWorkspaceContext,
             conversationContext: params.conversationContext,
             activeTask: params.activeTask,
@@ -280,7 +280,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         };
 
         return {
-            snapshot,
+            context,
             workspaceContext: currentWorkspaceContext
         };
     }
@@ -291,25 +291,25 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
     private async createAndPersistState(
         params: CreateStateParams,
         workspaceData: any,
-        snapshotResult: any,
+        contextResult: any,
         memoryService: MemoryService
-    ): Promise<{success: boolean; error?: string; stateId?: string; savedSnapshot?: any}> {
+    ): Promise<{success: boolean; error?: string; stateId?: string; savedState?: any}> {
         try {
             const { workspaceId, workspace } = workspaceData;
-            const { snapshot } = snapshotResult;
+            const { context } = contextResult;
             const now = Date.now();
 
-            // Build WorkspaceStateSnapshot for storage following the architecture design
-            // This matches the WorkspaceStateSnapshot interface which extends State
-            const workspaceStateSnapshot = {
+            // Build WorkspaceState for storage following the architecture design
+            // This matches the WorkspaceState interface which extends State
+            const workspaceState = {
                 // Core State fields (required)
                 id: `state_${now}_${Math.random().toString(36).substring(2, 11)}`,
                 name: params.name,
                 workspaceId: workspaceId,
                 created: now,
-                snapshot: snapshot,  // The inner StateSnapshot with activeTask, activeFiles, etc.
-                
-                // Legacy/optional WorkspaceStateSnapshot fields
+                context: context,  // The inner StateContext with activeTask, activeFiles, etc.
+
+                // Additional WorkspaceState fields
                 sessionId: params.targetSessionId || params.context.sessionId || 'current',
                 timestamp: now,
                 description: `${params.activeTask} - ${params.reasoning}`,
@@ -331,16 +331,16 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
                 }
             };
 
-            // Persist to MemoryService - pass the full WorkspaceStateSnapshot
+            // Persist to MemoryService - pass the full WorkspaceState
             const sessionId = params.targetSessionId || params.context.sessionId || 'current';
             const stateId = await memoryService.saveState(
                 workspaceId,
                 sessionId,
-                workspaceStateSnapshot,  // Pass the full object, not just snapshot
-                workspaceStateSnapshot.name
+                workspaceState,  // Pass the full object
+                workspaceState.name
             );
 
-            return { success: true, stateId, savedSnapshot: workspaceStateSnapshot };
+            return { success: true, stateId, savedState: workspaceState };
 
         } catch (error) {
             return { success: false, error: createErrorMessage('Error persisting state: ', error) };
@@ -352,15 +352,15 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      */
     private async verifyStatePersistence(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string}> {
         try {
-            // getState returns WorkspaceStateSnapshot which has a snapshot property
+            // getState returns WorkspaceState which has a context property
             const retrieved = await memoryService.getState(workspaceId, sessionId, stateId);
             if (!retrieved) {
                 return { success: false, error: 'State not found after creation' };
             }
 
-            // Verify essential snapshot fields
-            if (!retrieved.snapshot || !retrieved.snapshot.activeTask) {
-                return { success: false, error: 'State data incomplete after persistence - missing snapshot.activeTask' };
+            // Verify essential context fields
+            if (!retrieved.context || !retrieved.context.activeTask) {
+                return { success: false, error: 'State data incomplete after persistence - missing context.activeTask' };
             }
 
             if (!retrieved.workspaceId || !retrieved.name) {
@@ -391,33 +391,33 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      */
     private prepareFinalResult(
         stateId: string,
-        savedSnapshot: any,
-        snapshotResult: any,
+        savedState: any,
+        contextResult: any,
         workspaceData: any,
         startTime: number,
         params: CreateStateParams
     ): StateResult {
         const { workspace } = workspaceData;
-        
+
         const resultData = {
-            stateId: savedSnapshot.id,
-            name: savedSnapshot.name,
-            workspaceId: savedSnapshot.workspaceId,
-            sessionId: savedSnapshot.sessionId,
-            timestamp: savedSnapshot.timestamp,
-            created: savedSnapshot.created,
-            summary: `State "${savedSnapshot.name}" saved successfully. Task: ${snapshotResult.snapshot.activeTask}`,
+            stateId: savedState.id,
+            name: savedState.name,
+            workspaceId: savedState.workspaceId,
+            sessionId: savedState.sessionId,
+            timestamp: savedState.timestamp,
+            created: savedState.created,
+            summary: `State "${savedState.name}" saved successfully. Task: ${contextResult.context.activeTask}`,
             metadata: {
                 persistenceVerified: true,
                 workspaceName: workspace.name,
-                totalActiveFiles: snapshotResult.snapshot.activeFiles.length,
-                nextStepsCount: snapshotResult.snapshot.nextSteps.length
+                totalActiveFiles: contextResult.context.activeFiles.length,
+                nextStepsCount: contextResult.context.nextSteps.length
             },
             capturedContext: {
-                summary: `${snapshotResult.snapshot.activeTask} - ${snapshotResult.snapshot.reasoning}`,
-                conversationContext: snapshotResult.snapshot.conversationContext,
-                activeFiles: snapshotResult.snapshot.activeFiles,
-                nextSteps: snapshotResult.snapshot.nextSteps
+                summary: `${contextResult.context.activeTask} - ${contextResult.context.reasoning}`,
+                conversationContext: contextResult.context.conversationContext,
+                activeFiles: contextResult.context.activeFiles,
+                nextSteps: contextResult.context.nextSteps
             },
             performance: {
                 totalDuration: Date.now() - startTime,
@@ -425,7 +425,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
             }
         };
 
-        const contextString = `State "${savedSnapshot.name}" created and persisted successfully with ID: ${savedSnapshot.id}`;
+        const contextString = `State "${savedState.name}" created and persisted successfully with ID: ${savedState.id}`;
         const workspaceContext = this.getInheritedWorkspaceContext({ 
             context: { 
                 sessionId: params.context.sessionId,
@@ -462,7 +462,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
         const customSchema = {
             type: 'object',
             title: 'Create State - Save Work Context for Resumption',
-            description: '⚠️ CRITICAL: "name" is the FIRST required parameter - provide a short descriptive title. Create a state snapshot to save your current work context for later resumption.',
+            description: '⚠️ CRITICAL: "name" is the FIRST required parameter - provide a short descriptive title. Create a state to save your current work context for later resumption.',
             properties: {
                 name: {
                     type: 'string',

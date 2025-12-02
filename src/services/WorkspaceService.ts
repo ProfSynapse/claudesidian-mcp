@@ -390,7 +390,7 @@ export class WorkspaceService {
       id: stateId,
       name: stateData.name || 'Untitled State',
       created: stateData.created || Date.now(),
-      snapshot: stateData.snapshot || {} as any
+      state: stateData.state || (stateData as any).snapshot || {} as any  // Support both new and legacy property names
     };
 
     // Add to session

@@ -76,7 +76,7 @@ export class WhatIsNexusAccordion {
         this.createAgentDescription(
             agentsContainer,
             'Memory Manager',
-            'Manages workspace sessions, state snapshots, and persistent memory across conversations. Provides operations for creating, listing, editing, and deleting sessions and snapshot states.'
+            'Manages workspace sessions, states, and persistent memory across conversations. Provides operations for creating, listing, editing, and deleting sessions and states.'
         );
         
         this.createAgentDescription(

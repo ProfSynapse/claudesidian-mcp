@@ -56,7 +56,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       // Filter by tags if provided
       if (params.tags && params.tags.length > 0) {
         filteredStates = filteredStates.filter(state => {
-          const stateTags = (state.snapshot as any)?.metadata?.tags || [];
+          const stateTags = (state.state as any)?.state?.metadata?.tags || [];
           return params.tags!.some(tag => stateTags.includes(tag));
         });
       }
@@ -144,12 +144,12 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         created: state.created || state.timestamp
       };
 
-      if (includeContext && state.snapshot) {
+      if (includeContext && state.state?.context) {
         enhanced.context = {
-          files: state.snapshot.activeFiles || [],
+          files: state.state.context.activeFiles || [],
           traceCount: 0, // Could be enhanced to count related traces
-          tags: state.state?.metadata?.tags || [],
-          summary: state.snapshot.activeTask || 'No active task recorded'
+          tags: state.state?.state?.metadata?.tags || [],
+          summary: state.state.context.activeTask || 'No active task recorded'
         };
       }
 

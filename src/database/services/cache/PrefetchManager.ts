@@ -102,8 +102,8 @@ export class PrefetchManager extends EventEmitter {
 
         try {
             // Get the state to find related states
-            const snapshots = await this.memoryService.getStates('default-workspace');
-            const state = snapshots.find(s => s.id === stateId);
+            const allStates = await this.memoryService.getStates('default-workspace');
+            const state = allStates.find(s => s.id === stateId);
 
             if (state) {
                 // Prefetch parent session
@@ -113,7 +113,7 @@ export class PrefetchManager extends EventEmitter {
 
                 // Prefetch sibling states (same session)
                 if ((state as any).sessionId) {
-                    const siblingStates = snapshots
+                    const siblingStates = allStates
                         .filter(s => (s as any).sessionId === (state as any).sessionId && s.id !== stateId)
                         .sort((a, b) => ((b as any).timestamp ?? 0) - ((a as any).timestamp ?? 0))
                         .slice(0, 3);
