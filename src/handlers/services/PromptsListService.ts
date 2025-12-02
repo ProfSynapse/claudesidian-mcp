@@ -93,7 +93,7 @@ export class PromptsListService implements IPromptsListService {
         try {
             // Check custom prompts first if available
             if (this.customPromptStorage && this.customPromptStorage.isEnabled()) {
-                const customPrompt = this.customPromptStorage.getPromptByName(name);
+                const customPrompt = this.customPromptStorage.getPromptByNameOrId(name);
                 if (customPrompt && customPrompt.isEnabled) {
                     return true;
                 }
@@ -117,7 +117,7 @@ export class PromptsListService implements IPromptsListService {
     async getPrompt(name: string): Promise<string | null> {
         try {
             if (this.customPromptStorage && this.customPromptStorage.isEnabled()) {
-                const customPrompt = this.customPromptStorage.getPromptByName(name);
+                const customPrompt = this.customPromptStorage.getPromptByNameOrId(name);
                 if (customPrompt && customPrompt.isEnabled) {
                     return customPrompt.prompt;
                 }

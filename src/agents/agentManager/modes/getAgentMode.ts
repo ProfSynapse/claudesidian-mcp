@@ -43,14 +43,10 @@ export class GetAgentMode extends BaseMode<GetAgentParams, GetAgentResult> {
       // Get prompt by id or name
       let prompt = null;
       if (id) {
-        // First try as unique identifier
-        prompt = this.storageService.getPrompt(id);
-        // If not found, try as agent name
-        if (!prompt) {
-          prompt = this.storageService.getPromptByName(id);
-        }
+        // Use unified lookup (tries ID first, then name)
+        prompt = this.storageService.getPromptByNameOrId(id);
       } else if (name) {
-        prompt = this.storageService.getPromptByName(name);
+        prompt = this.storageService.getPromptByNameOrId(name);
       }
       
       if (!prompt) {

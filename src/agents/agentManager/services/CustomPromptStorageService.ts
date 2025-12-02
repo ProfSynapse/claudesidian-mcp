@@ -39,28 +39,27 @@ export class CustomPromptStorageService {
     }
 
     /**
-     * Get a specific prompt by name
-     * @param name Prompt name
-     * @returns Custom prompt or undefined if not found
-     */
-    getPromptByName(name: string): CustomPrompt | undefined {
-        return this.getAllPrompts().find(prompt => prompt.name === name);
-    }
-
-    /**
      * Get a specific prompt by name or ID (unified lookup)
      * Tries ID lookup first (more specific), then falls back to name lookup
      * @param identifier Prompt name or ID
      * @returns Custom prompt or undefined if not found
      */
     getPromptByNameOrId(identifier: string): CustomPrompt | undefined {
+        const prompts = this.getAllPrompts();
         // Try ID lookup first (more specific)
-        const byId = this.getPrompt(identifier);
+        const byId = prompts.find(prompt => prompt.id === identifier);
         if (byId) {
             return byId;
         }
         // Fall back to name lookup
-        return this.getPromptByName(identifier);
+        return prompts.find(prompt => prompt.name === identifier);
+    }
+
+    /**
+     * Find prompt by name (internal use for duplicate checking)
+     */
+    private findByName(name: string): CustomPrompt | undefined {
+        return this.getAllPrompts().find(prompt => prompt.name === name);
     }
 
     /**
@@ -73,7 +72,7 @@ export class CustomPromptStorageService {
         this.ensureCustomPromptsSettings();
         
         // Check for duplicate names
-        if (this.getPromptByName(promptData.name)) {
+        if (this.findByName(promptData.name)) {
             throw new Error(`A prompt with the name "${promptData.name}" already exists`);
         }
 
@@ -114,7 +113,7 @@ export class CustomPromptStorageService {
 
         // Check for name conflicts if name is being updated
         if (updates.name && updates.name !== prompts[index].name) {
-            const existingPrompt = this.getPromptByName(updates.name);
+            const existingPrompt = this.findByName(updates.name);
             if (existingPrompt && existingPrompt.id !== id) {
                 throw new Error(`A prompt with the name "${updates.name}" already exists`);
             }
