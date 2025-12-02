@@ -333,7 +333,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
 
             // Persist to MemoryService - pass the full WorkspaceStateSnapshot
             const sessionId = params.targetSessionId || params.context.sessionId || 'current';
-            const stateId = await memoryService.saveStateSnapshot(
+            const stateId = await memoryService.saveState(
                 workspaceId,
                 sessionId,
                 workspaceStateSnapshot,  // Pass the full object, not just snapshot
@@ -352,8 +352,8 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      */
     private async verifyStatePersistence(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<{success: boolean; error?: string}> {
         try {
-            // getStateSnapshot returns WorkspaceStateSnapshot which has a snapshot property
-            const retrieved = await memoryService.getStateSnapshot(workspaceId, sessionId, stateId);
+            // getState returns WorkspaceStateSnapshot which has a snapshot property
+            const retrieved = await memoryService.getState(workspaceId, sessionId, stateId);
             if (!retrieved) {
                 return { success: false, error: 'State not found after creation' };
             }
@@ -378,7 +378,7 @@ export class CreateStateMode extends BaseMode<CreateStateParams, StateResult> {
      */
     private async rollbackState(workspaceId: string, sessionId: string, stateId: string, memoryService: MemoryService): Promise<void> {
         try {
-            await memoryService.deleteSnapshot(workspaceId, sessionId, stateId);
+            await memoryService.deleteState(workspaceId, sessionId, stateId);
             // State rolled back silently - error will be reported through main flow
         } catch (error) {
             // Rollback failure is not critical - verification failure is the primary issue

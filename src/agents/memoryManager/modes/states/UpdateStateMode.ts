@@ -83,7 +83,7 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         const sessionId = params.context?.sessionId || 'current';
 
         // Get existing state using unified lookup (ID or name)
-        const existingState = await memoryService.getStateSnapshotByNameOrId(workspaceId, sessionId, params.stateId);
+        const existingState = await memoryService.getStateByNameOrId(workspaceId, sessionId, params.stateId);
         if (!existingState) {
             return this.prepareResult(false, undefined, `State '${params.stateId}' not found (searched by both name and ID)`);
         }
@@ -122,10 +122,10 @@ export class UpdateStateMode extends BaseMode<UpdateStateParams, StateResult> {
         // Apply updates using actual state ID
         const updatedSnapshot = { ...existingState, ...updates };
         const actualStateId = existingState.id || params.stateId;
-        await memoryService.updateSnapshot(workspaceId, sessionId, actualStateId, updatedSnapshot);
+        await memoryService.updateState(workspaceId, sessionId, actualStateId, updatedSnapshot);
 
-        // Use updated snapshot for result
-        const updatedState = await memoryService.getStateSnapshot(workspaceId, sessionId, actualStateId);
+        // Use updated state for result
+        const updatedState = await memoryService.getState(workspaceId, sessionId, actualStateId);
         if (!updatedState) {
             return this.prepareResult(false, undefined, 'Failed to retrieve updated state');
         }

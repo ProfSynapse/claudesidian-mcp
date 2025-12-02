@@ -163,8 +163,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
      */
     private async loadStateData(workspaceId: string, sessionId: string, stateIdentifier: string, memoryService: MemoryService): Promise<{success: boolean; error?: string; data?: any}> {
         try {
-            // Get state snapshot from memory service using unified lookup (ID or name)
-            const stateSnapshot = await memoryService.getStateSnapshotByNameOrId(workspaceId, sessionId, stateIdentifier);
+            // Get state from memory service using unified lookup (ID or name)
+            const stateSnapshot = await memoryService.getStateByNameOrId(workspaceId, sessionId, stateIdentifier);
             if (!stateSnapshot) {
                 return { success: false, error: `State '${stateIdentifier}' not found (searched by both name and ID)` };
             }

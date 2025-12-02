@@ -1,5 +1,5 @@
 /**
- * ListStatesMode - Lists state snapshots with filtering and sorting capabilities
+ * ListStatesMode - Lists states with filtering and sorting capabilities
  * Following the same pattern as ListWorkspacesMode for consistency
  */
 
@@ -12,7 +12,7 @@ import { MemoryService } from "../../services/MemoryService";
 import { WorkspaceService } from '../../../../services/WorkspaceService';
 
 /**
- * Mode for listing state snapshots with filtering and sorting
+ * Mode for listing states with filtering and sorting
  */
 export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
   private agent: MemoryManagerAgent;
@@ -21,7 +21,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
     super(
       'listStates',
       'List States',
-      'List state snapshots with optional filtering and sorting',
+      'List states with optional filtering and sorting',
       '2.0.0'
     );
     this.agent = agent;
@@ -45,12 +45,12 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       }
 
       // Get states (pass sessionId to filter by session, or undefined to get all)
-      const states = await memoryService.getStateSnapshots(
+      const states = await memoryService.getStates(
         workspaceId || 'default-workspace',
         params.context.sessionId
       );
 
-      // Note: getStateSnapshots already filters by sessionId if provided
+      // Note: getStates already filters by sessionId if provided
       let filteredStates = states;
 
       // Filter by tags if provided

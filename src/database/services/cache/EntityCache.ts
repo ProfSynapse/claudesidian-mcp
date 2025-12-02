@@ -85,7 +85,7 @@ export class EntityCache extends EventEmitter {
             sessionIds.push(...sessions.map(s => s.id));
 
             // Get states for this workspace
-            const snapshots = await this.memoryService.getStateSnapshots(workspaceId);
+            const snapshots = await this.memoryService.getStates(workspaceId);
             stateIds.push(...snapshots.map(s => s.id));
 
             // Collect associated files
@@ -175,7 +175,7 @@ export class EntityCache extends EventEmitter {
             }
 
             // Load state data
-            const snapshots = await this.memoryService.getStateSnapshots('default-workspace');
+            const snapshots = await this.memoryService.getStates('default-workspace');
             const state = snapshots.find(s => s.id === stateId);
             
             if (!state) {
@@ -279,7 +279,7 @@ export class EntityCache extends EventEmitter {
         // Batch load uncached items
         if (uncached.length > 0) {
             // Load all snapshots and filter
-            const allSnapshots = await this.memoryService.getStateSnapshots('default-workspace');
+            const allSnapshots = await this.memoryService.getStates('default-workspace');
             const states = allSnapshots.filter(s => uncached.includes(s.id));
             
             // Cache the loaded states

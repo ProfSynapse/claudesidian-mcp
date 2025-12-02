@@ -210,9 +210,9 @@ export class MemoryService {
   }
 
   /**
-   * Save state snapshot to session
+   * Save state to session
    */
-  async saveStateSnapshot(
+  async saveState(
     workspaceId: string,
     sessionId: string,
     snapshot: WorkspaceStateSnapshot,
@@ -229,9 +229,9 @@ export class MemoryService {
   }
 
   /**
-   * Get state snapshot from session
+   * Get state from session by ID
    */
-  async getStateSnapshot(
+  async getState(
     workspaceId: string,
     sessionId: string,
     stateId: string
@@ -246,10 +246,10 @@ export class MemoryService {
   }
 
   /**
-   * Get state snapshot by name or ID (unified lookup)
+   * Get state by name or ID (unified lookup)
    * Tries ID lookup first, then falls back to name lookup
    */
-  async getStateSnapshotByNameOrId(
+  async getStateByNameOrId(
     workspaceId: string,
     sessionId: string,
     identifier: string
@@ -264,9 +264,9 @@ export class MemoryService {
   }
 
   /**
-   * Get all state snapshots for a session (or all sessions in workspace if sessionId not provided)
+   * Get all states for a session (or all sessions in workspace if sessionId not provided)
    */
-  async getStateSnapshots(workspaceId: string, sessionId?: string): Promise<Array<{
+  async getStates(workspaceId: string, sessionId?: string): Promise<Array<{
     id: string;
     name: string;
     created: number;
@@ -302,9 +302,9 @@ export class MemoryService {
   }
 
   /**
-   * Update state snapshot
+   * Update state
    */
-  async updateSnapshot(
+  async updateState(
     workspaceId: string,
     sessionId: string,
     stateId: string,
@@ -331,9 +331,9 @@ export class MemoryService {
   }
 
   /**
-   * Delete state snapshot
+   * Delete state
    */
-  async deleteSnapshot(
+  async deleteState(
     workspaceId: string,
     sessionId: string,
     stateId: string

@@ -102,7 +102,7 @@ export class PrefetchManager extends EventEmitter {
 
         try {
             // Get the state to find related states
-            const snapshots = await this.memoryService.getStateSnapshots('default-workspace');
+            const snapshots = await this.memoryService.getStates('default-workspace');
             const state = snapshots.find(s => s.id === stateId);
 
             if (state) {

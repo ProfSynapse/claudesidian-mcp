@@ -379,7 +379,7 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const states = await memoryService.getStateSnapshots(options.workspaceId || GLOBAL_WORKSPACE_ID, options.sessionId);
+      const states = await memoryService.getStates(options.workspaceId || GLOBAL_WORKSPACE_ID, options.sessionId);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 

@@ -38,14 +38,14 @@ export class DeleteAgentMode extends BaseMode<DeleteAgentParams, DeleteAgentResu
         return createResult<DeleteAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
       }
       
-      // Check if prompt exists before deletion
-      const existingPrompt = this.storageService.getPrompt(id.trim());
+      // Check if prompt exists before deletion (unified lookup by ID or name)
+      const existingPrompt = this.storageService.getPromptByNameOrId(id.trim());
       if (!existingPrompt) {
-        return createResult<DeleteAgentResult>(false, null, `Prompt with ID "${id}" not found`, undefined, undefined, params.context.sessionId, params.context);
+        return createResult<DeleteAgentResult>(false, null, `Prompt "${id}" not found (searched by both name and ID)`, undefined, undefined, params.context.sessionId, params.context);
       }
-      
-      // Delete the prompt
-      const deleted = await this.storageService.deletePrompt(id.trim());
+
+      // Delete the prompt using actual ID
+      const deleted = await this.storageService.deletePrompt(existingPrompt.id);
       
       return createResult<DeleteAgentResult>(true, {
         deleted,
@@ -66,7 +66,7 @@ export class DeleteAgentMode extends BaseMode<DeleteAgentParams, DeleteAgentResu
       properties: {
         id: {
           type: 'string',
-          description: 'Unique ID of the prompt to delete',
+          description: 'ID or name of the agent to delete. Accepts either the unique agent ID or the agent name.',
           minLength: 1
         }
       },

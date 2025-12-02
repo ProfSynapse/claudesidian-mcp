@@ -30,15 +30,6 @@ export class CustomPromptStorageService {
     }
 
     /**
-     * Get a specific prompt by ID
-     * @param id Prompt ID
-     * @returns Custom prompt or undefined if not found
-     */
-    getPrompt(id: string): CustomPrompt | undefined {
-        return this.getAllPrompts().find(prompt => prompt.id === id);
-    }
-
-    /**
      * Get a specific prompt by name or ID (unified lookup)
      * Tries ID lookup first (more specific), then falls back to name lookup
      * @param identifier Prompt name or ID
@@ -162,12 +153,12 @@ export class CustomPromptStorageService {
      * @throws Error if prompt not found
      */
     async togglePrompt(id: string): Promise<CustomPrompt> {
-        const prompt = this.getPrompt(id);
+        const prompt = this.getPromptByNameOrId(id);
         if (!prompt) {
-            throw new Error(`Prompt with ID "${id}" not found`);
+            throw new Error(`Prompt "${id}" not found (searched by both name and ID)`);
         }
 
-        return await this.updatePrompt(id, { isEnabled: !prompt.isEnabled });
+        return await this.updatePrompt(prompt.id, { isEnabled: !prompt.isEnabled });
     }
 
     /**

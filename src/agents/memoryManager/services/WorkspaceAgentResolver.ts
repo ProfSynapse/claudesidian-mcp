@@ -58,57 +58,12 @@ export class WorkspaceAgentResolver {
         return null;
       }
 
-      // Use the new dedicated agent structure
-      const { agentId, agentName } = workspace.context.dedicatedAgent;
-      return await this.fetchAgentById(agentId, agentName, app);
+      // Use the new dedicated agent structure - use unified lookup
+      const { agentId } = workspace.context.dedicatedAgent;
+      return await this.fetchAgentByNameOrId(agentId, app);
 
     } catch (error) {
       console.warn('[WorkspaceAgentResolver] Failed to fetch workspace agent:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch agent by ID (preferred method)
-   * @param agentId The agent ID
-   * @param agentName The agent name (for logging)
-   * @param app The Obsidian app instance
-   * @returns Agent info or null if not found
-   */
-  async fetchAgentById(
-    agentId: string,
-    agentName: string,
-    app: App
-  ): Promise<AgentInfo | null> {
-    try {
-      // Get CustomPromptStorageService through plugin's agentManager
-      const plugin = getNexusPlugin(app) as any;
-      if (!plugin || !plugin.agentManager) {
-        console.warn('[WorkspaceAgentResolver] AgentManager not available');
-        return null;
-      }
-
-      const agentManagerAgent = plugin.agentManager.getAgent('agentManager');
-      if (!agentManagerAgent || !agentManagerAgent.storageService) {
-        console.warn('[WorkspaceAgentResolver] AgentManagerAgent or storage service not available');
-        return null;
-      }
-
-      // Fetch agent by ID (using correct method name: getPrompt)
-      const agent = agentManagerAgent.storageService.getPrompt(agentId);
-      if (!agent) {
-        console.warn(`[WorkspaceAgentResolver] Agent with ID '${agentId}' not found in storage`);
-        return null;
-      }
-
-      return {
-        id: agent.id,
-        name: agent.name,
-        systemPrompt: agent.prompt
-      };
-
-    } catch (error) {
-      console.warn(`[WorkspaceAgentResolver] Failed to fetch agent by ID '${agentId}':`, error);
       return null;
     }
   }
