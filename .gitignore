@@ -68,3 +68,4 @@ nexus-tools-*-mlc/
 *.wasm
 models/
 nexus-tools-q4f16-mlc-new
+agentic-flow-main/

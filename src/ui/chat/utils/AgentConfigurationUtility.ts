@@ -9,7 +9,7 @@
  */
 
 import { AgentOption } from '../components/AgentSelector';
-import { AgentDiscoveryService } from '../../../services/agents/AgentDiscoveryService';
+import { AgentDiscoveryService } from '../../../services/agent/AgentDiscoveryService';
 import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 /**
