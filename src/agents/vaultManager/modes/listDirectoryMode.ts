@@ -4,6 +4,8 @@ import { ListDirectoryParams, ListDirectoryResult } from '../types';
 import { createErrorMessage } from '../../../utils/errorUtils';
 import { filterByName, FILTER_DESCRIPTION } from '../../../utils/filterUtils';
 import { parseWorkspaceContext } from '../../../utils/contextUtils';
+import { PaginationHelper } from '../../../services/pagination/PaginationHelper';
+import { PaginationInfo } from '../../../types/pagination/PaginationTypes';
 
 /**
  * Mode to list files and/or folders in a directory
@@ -54,7 +56,10 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParams, Li
       
       // Prepare result data
       const result: any = {};
-      
+
+      // Check if pagination is requested
+      const usePagination = PaginationHelper.hasPaginationParams(params);
+
       if (includeFiles) {
         // Map files to required format
         const fileData = filteredFiles.map(file => ({
@@ -64,25 +69,51 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParams, Li
           created: file.stat.ctime,
           modified: file.stat.mtime
         }));
-        
+
         // Sort files by modified date (newest first)
         fileData.sort((a, b) => b.modified - a.modified);
-        result.files = fileData;
+
+        // Apply pagination or return all
+        if (usePagination || fileData.length > PaginationHelper.DEFAULT_PAGE_SIZE) {
+          const paginated = PaginationHelper.paginate(fileData, {
+            page: params.page,
+            pageSize: params.pageSize
+          });
+          result.files = {
+            items: paginated.items,
+            pagination: paginated.pagination
+          };
+        } else {
+          result.files = fileData;
+        }
       }
-      
+
       if (includeFolders) {
         // Map folders to required format
         const folderData = filteredFolders.map(folder => ({
           name: folder.name,
           path: folder.path
         }));
-        
+
         // Sort folders alphabetically
         folderData.sort((a, b) => a.name.localeCompare(b.name));
-        result.folders = folderData;
+
+        // Apply pagination or return all
+        if (usePagination || folderData.length > PaginationHelper.DEFAULT_PAGE_SIZE) {
+          const paginated = PaginationHelper.paginate(folderData, {
+            page: params.page,
+            pageSize: params.pageSize
+          });
+          result.folders = {
+            items: paginated.items,
+            pagination: paginated.pagination
+          };
+        } else {
+          result.folders = folderData;
+        }
       }
-      
-      // Add summary
+
+      // Add summary (always shows total counts before pagination)
       result.summary = {
         fileCount: filteredFiles.length,
         folderCount: filteredFolders.length,
@@ -228,11 +259,19 @@ export class ListDirectoryMode extends BaseDirectoryMode<ListDirectoryParams, Li
           type: 'boolean',
           description: 'Shortcut to only return folders (overrides includeFiles/includeFolders)',
           default: false
+        },
+        page: {
+          type: 'number',
+          description: 'Page number (0-indexed). Use with pageSize for pagination of results.'
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Items per page (default: 25, max: 200). Use with page for pagination.'
         }
       },
       required: ['path']
     };
-    
+
     return this.getMergedSchema(modeSchema);
   }
   

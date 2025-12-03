@@ -392,6 +392,16 @@ export interface ListDirectoryParams extends CommonParameters {
    * Shortcut: Only return folders (equivalent to includeFiles=false, includeFolders=true)
    */
   foldersOnly?: boolean;
+
+  /**
+   * Page number (0-indexed) for pagination
+   */
+  page?: number;
+
+  /**
+   * Items per page (default: 25, max: 200)
+   */
+  pageSize?: number;
 }
 
 /**

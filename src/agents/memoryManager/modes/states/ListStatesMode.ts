@@ -10,6 +10,8 @@ import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
 import { WorkspaceService } from '../../../../services/WorkspaceService';
+import { PaginationHelper } from '../../../../services/pagination/PaginationHelper';
+import { PaginationInfo } from '../../../../types/pagination/PaginationTypes';
 
 /**
  * Mode for listing states with filtering and sorting
@@ -64,35 +66,58 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       // Sort states
       const sortedStates = this.sortStates(filteredStates, params.order || 'desc');
 
-      // Apply limit
-      const limitedStates = params.limit ? sortedStates.slice(0, params.limit) : sortedStates;
+      // Apply pagination or limit (pagination takes precedence if provided)
+      const usePagination = PaginationHelper.hasPaginationParams(params);
+      let resultStates: any[];
+      let pagination: PaginationInfo | undefined;
+
+      if (usePagination) {
+        // Use pagination
+        const paginated = PaginationHelper.paginate(sortedStates, {
+          page: params.page,
+          pageSize: params.pageSize
+        });
+        resultStates = paginated.items;
+        pagination = paginated.pagination;
+      } else if (params.limit) {
+        // Backward compatibility: use simple limit
+        resultStates = sortedStates.slice(0, params.limit);
+      } else {
+        // Default: use pagination with defaults
+        const paginated = PaginationHelper.paginate(sortedStates, {});
+        resultStates = paginated.items;
+        pagination = paginated.pagination;
+      }
 
       // Enhance state data
       const enhancedStates = workspaceService
-        ? await this.enhanceStatesWithContext(limitedStates, workspaceService, params.includeContext)
-        : limitedStates.map(state => ({
+        ? await this.enhanceStatesWithContext(resultStates, workspaceService, params.includeContext)
+        : resultStates.map(state => ({
             ...state,
             workspaceName: 'Unknown Workspace',
             created: state.created || state.timestamp
           }));
 
       // Prepare result
-      const contextString = workspaceId 
-        ? `Found ${limitedStates.length} state(s) in workspace ${workspaceId}`
-        : `Found ${limitedStates.length} state(s) across all workspaces`;
+      const contextString = workspaceId
+        ? `Found ${resultStates.length} state(s) in workspace ${workspaceId}`
+        : `Found ${resultStates.length} state(s) across all workspaces`;
 
       return this.prepareResult(
         true,
         {
           states: enhancedStates,
           total: states.length,
-          filtered: limitedStates.length,
+          filtered: resultStates.length,
           workspaceId: workspaceId,
+          pagination,
           filters: {
             sessionId: params.context.sessionId,
             tags: params.tags || [],
             order: params.order || 'desc',
             limit: params.limit,
+            page: params.page,
+            pageSize: params.pageSize,
             includeContext: params.includeContext
           }
         },
@@ -191,7 +216,15 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of states to return'
+          description: 'Maximum number of states to return (backward compatibility, prefer page/pageSize)'
+        },
+        page: {
+          type: 'number',
+          description: 'Page number (0-indexed). Use with pageSize for pagination.'
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Items per page (default: 25, max: 200). Use with page for pagination.'
         },
         order: {
           type: 'string',
@@ -205,7 +238,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       },
       additionalProperties: false
     };
-    
+
     return this.getMergedSchema(customSchema);
   }
 

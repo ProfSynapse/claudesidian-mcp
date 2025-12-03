@@ -6,6 +6,7 @@
 import { CommonParameters, CommonResult } from '../../../types/mcp';
 import { ProjectWorkspace, WorkspaceContext } from './WorkspaceTypes';
 import { StateContext } from '../session/SessionTypes';
+import { PaginationInfo } from '../../../types/pagination/PaginationTypes';
 
 /**
  * Create workspace parameters - LLM must provide complete WorkspaceContext structure
@@ -96,7 +97,11 @@ export interface LoadWorkspaceResult extends CommonResult {
       recentActivity: string[];
     };
     workflows: string[];
-    workspaceStructure: string[];
+    /** Workspace structure - can be paginated or simple array for small workspaces */
+    workspaceStructure: {
+      files: string[];
+      pagination?: PaginationInfo;
+    } | string[];
     recentFiles: Array<{
       path: string;
       modified: number;
@@ -195,6 +200,10 @@ export interface LoadStateResult extends CommonResult {
 export interface LoadWorkspaceParameters extends CommonParameters {
   id: string;
   limit?: number; // Optional limit for sessions, states, and recentActivity (default: 3)
+  /** Page number (0-indexed) for workspaceStructure pagination */
+  structurePage?: number;
+  /** Items per page for workspaceStructure (default: 25, max: 200) */
+  structurePageSize?: number;
 }
 
 export interface LoadStateParams extends CommonParameters {
@@ -210,6 +219,10 @@ export interface ListWorkspacesParameters extends CommonParameters {
   sortBy?: 'name' | 'created' | 'lastAccessed';
   order?: 'asc' | 'desc';
   limit?: number;
+  /** Page number (0-indexed) for pagination */
+  page?: number;
+  /** Items per page (default: 25, max: 200) */
+  pageSize?: number;
 }
 
 export interface EditWorkspaceParameters extends CommonParameters {

@@ -9,12 +9,14 @@
  */
 
 import { BaseMode } from '../../../baseMode';
-import { 
-  ListWorkspacesParameters, 
+import {
+  ListWorkspacesParameters,
   ListWorkspacesResult
 } from '../../../../database/workspace-types';
 import { WorkspaceService } from '../../../../services/WorkspaceService';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
+import { PaginationHelper } from '../../../../services/pagination/PaginationHelper';
+import { PaginationInfo } from '../../../../types/pagination/PaginationTypes';
 
 /**
  * Mode to list available workspaces with filtering and sorting
@@ -60,6 +62,8 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       }
       
       // Get workspaces with optional filtering and sorting
+      // Don't pass limit to service when using pagination - we'll handle it after
+      const usePagination = PaginationHelper.hasPaginationParams(params);
       const queryParams: {
         sortBy?: 'name' | 'created' | 'lastAccessed',
         sortOrder?: 'asc' | 'desc',
@@ -67,7 +71,7 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
       } = {
         sortBy: params.sortBy as 'name' | 'created' | 'lastAccessed' | undefined,
         sortOrder: params.order as 'asc' | 'desc' | undefined,
-        limit: params.limit
+        limit: usePagination ? undefined : params.limit // Only use limit for backward compat
       };
 
       let workspaces;
@@ -79,7 +83,7 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           success: false,
           error: `Failed to query workspaces: ${queryError instanceof Error ? queryError.message : String(queryError)}`,
           data: { workspaces: [] },
-          workspaceContext: typeof params.workspaceContext === 'string' 
+          workspaceContext: typeof params.workspaceContext === 'string'
             ? parseWorkspaceContext(params.workspaceContext) || undefined
             : params.workspaceContext
         };
@@ -122,33 +126,55 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
           lastAccessed: ws.lastAccessed || Date.now(),
           status: ws.status || 'active'
         };
-        
+
         return formatted;
       });
-      
+
+      // Apply pagination or use all results
+      let resultWorkspaces: any[];
+      let pagination: PaginationInfo | undefined;
+
+      if (usePagination) {
+        const paginated = PaginationHelper.paginate(formattedWorkspaces, {
+          page: params.page,
+          pageSize: params.pageSize
+        });
+        resultWorkspaces = paginated.items;
+        pagination = paginated.pagination;
+      } else if (!params.limit) {
+        // No limit specified - apply default pagination
+        const paginated = PaginationHelper.paginate(formattedWorkspaces, {});
+        resultWorkspaces = paginated.items;
+        pagination = paginated.pagination;
+      } else {
+        // Backward compatibility: limit was already applied by service
+        resultWorkspaces = formattedWorkspaces;
+      }
+
       // Ensure workspaceContext has required workspaceId
-      const workspaceContext = params.workspaceContext 
-        ? { 
+      const workspaceContext = params.workspaceContext
+        ? {
             workspaceId: parseWorkspaceContext(params.workspaceContext)?.workspaceId || workspaces[0]?.id || '',
-            workspacePath: parseWorkspaceContext(params.workspaceContext)?.workspacePath 
+            workspacePath: parseWorkspaceContext(params.workspaceContext)?.workspacePath
           }
         : undefined;
-      
-      
+
+
       const result = {
         success: true,
         data: {
-          workspaces: formattedWorkspaces,
+          workspaces: resultWorkspaces,
+          pagination,
           performance: {
             totalDuration: Date.now() - startTime,
             serviceAccessTime: 0, // Simplified for consolidated version
             queryTime: Date.now() - startTime,
-            workspaceCount: formattedWorkspaces.length
+            workspaceCount: resultWorkspaces.length
           }
         },
         workspaceContext: workspaceContext
       };
-      
+
       return result;
       
     } catch (error: any) {
@@ -188,11 +214,19 @@ export class ListWorkspacesMode extends BaseMode<ListWorkspacesParameters, ListW
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of workspaces to return'
+          description: 'Maximum number of workspaces to return (backward compatibility, prefer page/pageSize)'
+        },
+        page: {
+          type: 'number',
+          description: 'Page number (0-indexed). Use with pageSize for pagination.'
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Items per page (default: 25, max: 200). Use with page for pagination.'
         }
       }
     };
-    
+
     // Merge with common schema (adds sessionId, workspaceContext)
     return this.getMergedSchema(modeSchema);
   }

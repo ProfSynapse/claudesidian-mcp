@@ -20,6 +20,8 @@ import {
 import { ProjectWorkspace } from '../../../../database/types/workspace/WorkspaceTypes';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { createErrorMessage } from '../../../../utils/errorUtils';
+import { PaginationHelper } from '../../../../services/pagination/PaginationHelper';
+import { PaginationInfo } from '../../../../types/pagination/PaginationTypes';
 
 // Import refactored services
 import { WorkspaceDataFetcher } from '../../services/WorkspaceDataFetcher';
@@ -144,10 +146,29 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         workspace.rootFolder,
         app
       );
-      const workspaceStructure = workspacePathResult.path?.files || [];
+      const allFiles = workspacePathResult.path?.files || [];
+
+      // Apply pagination to workspace structure
+      let structureFiles: string[];
+      let structurePagination: PaginationInfo | undefined;
+
+      const useStructurePagination = params.structurePage !== undefined || params.structurePageSize !== undefined;
+      if (useStructurePagination || allFiles.length > PaginationHelper.DEFAULT_PAGE_SIZE) {
+        // Use pagination for structure
+        const paginated = PaginationHelper.paginate(allFiles, {
+          page: params.structurePage ?? 0,
+          pageSize: params.structurePageSize ?? PaginationHelper.DEFAULT_PAGE_SIZE
+        });
+        structureFiles = paginated.items;
+        structurePagination = paginated.pagination;
+      } else {
+        // Small enough to return all
+        structureFiles = allFiles;
+      }
+
       const workspaceContext = {
         workspaceId: workspace.id,
-        workspacePath: workspaceStructure  // Use string[] not WorkspacePath object
+        workspacePath: structureFiles  // Use string[] not WorkspacePath object
       };
 
       const result = {
@@ -155,7 +176,10 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
         data: {
           context: context,
           workflows: workflows,
-          workspaceStructure: workspaceStructure,
+          workspaceStructure: {
+            files: structureFiles,
+            ...(structurePagination && { pagination: structurePagination })
+          },
           recentFiles: recentFiles,
           keyFiles: keyFiles,
           preferences: preferences,
@@ -234,6 +258,14 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           default: 3,
           minimum: 1,
           maximum: 20
+        },
+        structurePage: {
+          type: 'number',
+          description: 'Page number (0-indexed) for workspaceStructure pagination. Use with structurePageSize.'
+        },
+        structurePageSize: {
+          type: 'number',
+          description: 'Items per page for workspaceStructure (default: 25, max: 200). Use with structurePage.'
         }
       },
       required: ['id']

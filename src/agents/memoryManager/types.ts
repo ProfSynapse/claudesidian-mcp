@@ -86,7 +86,17 @@ export interface ListSessionsParams extends MemoryParams {
    * Maximum number of sessions to return
    */
   limit?: number;
-  
+
+  /**
+   * Page number (0-indexed) for pagination
+   */
+  page?: number;
+
+  /**
+   * Items per page (default: 25, max: 200)
+   */
+  pageSize?: number;
+
   /**
    * Sort order for sessions (default: desc - newest first)
    */
@@ -333,6 +343,16 @@ export interface ListStatesParams extends MemoryParams {
    * Filter states by tags
    */
   tags?: string[];
+
+  /**
+   * Page number (0-indexed) for pagination
+   */
+  page?: number;
+
+  /**
+   * Items per page (default: 25, max: 200)
+   */
+  pageSize?: number;
 }
 
 // Params for loading a state

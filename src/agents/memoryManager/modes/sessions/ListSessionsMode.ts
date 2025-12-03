@@ -10,6 +10,8 @@ import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../services/WorkspaceService';
+import { PaginationHelper } from '../../../../services/pagination/PaginationHelper';
+import { PaginationInfo } from '../../../../types/pagination/PaginationTypes';
 
 /**
  * Mode for listing sessions with filtering and sorting
@@ -56,32 +58,55 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       // Sort sessions
       const sortedSessions = this.sortSessions(filteredSessions, params.order || 'desc');
 
-      // Apply limit
-      const limitedSessions = params.limit ? sortedSessions.slice(0, params.limit) : sortedSessions;
+      // Apply pagination or limit (pagination takes precedence if provided)
+      const usePagination = PaginationHelper.hasPaginationParams(params);
+      let resultSessions: any[];
+      let pagination: PaginationInfo | undefined;
+
+      if (usePagination) {
+        // Use pagination
+        const paginated = PaginationHelper.paginate(sortedSessions, {
+          page: params.page,
+          pageSize: params.pageSize
+        });
+        resultSessions = paginated.items;
+        pagination = paginated.pagination;
+      } else if (params.limit) {
+        // Backward compatibility: use simple limit
+        resultSessions = sortedSessions.slice(0, params.limit);
+      } else {
+        // Default: use pagination with defaults
+        const paginated = PaginationHelper.paginate(sortedSessions, {});
+        resultSessions = paginated.items;
+        pagination = paginated.pagination;
+      }
 
       // Enhance session data with workspace names
-      const enhancedSessions = workspaceService 
-        ? await this.enhanceSessionsWithWorkspaceNames(limitedSessions, workspaceService)
-        : limitedSessions.map(session => ({
+      const enhancedSessions = workspaceService
+        ? await this.enhanceSessionsWithWorkspaceNames(resultSessions, workspaceService)
+        : resultSessions.map(session => ({
             ...session,
             workspaceName: 'Unknown Workspace'
           }));
 
       // Prepare result
-      const contextString = workspaceId 
-        ? `Found ${limitedSessions.length} session(s) in workspace ${workspaceId}`
-        : `Found ${limitedSessions.length} session(s) across all workspaces`;
+      const contextString = workspaceId
+        ? `Found ${resultSessions.length} session(s) in workspace ${workspaceId}`
+        : `Found ${resultSessions.length} session(s) across all workspaces`;
 
       return this.prepareResult(
         true,
         {
           sessions: enhancedSessions,
           total: sessions.length,
-          filtered: limitedSessions.length,
+          filtered: resultSessions.length,
           workspaceId: workspaceId,
+          pagination,
           filters: {
             order: params.order || 'desc',
-            limit: params.limit
+            limit: params.limit,
+            page: params.page,
+            pageSize: params.pageSize
           }
         },
         undefined,
@@ -160,7 +185,15 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       properties: {
         limit: {
           type: 'number',
-          description: 'Maximum number of sessions to return'
+          description: 'Maximum number of sessions to return (backward compatibility, prefer page/pageSize)'
+        },
+        page: {
+          type: 'number',
+          description: 'Page number (0-indexed). Use with pageSize for pagination.'
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Items per page (default: 25, max: 200). Use with page for pagination.'
         },
         order: {
           type: 'string',
@@ -170,7 +203,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       },
       additionalProperties: false
     };
-    
+
     return this.getMergedSchema(customSchema);
   }
 
