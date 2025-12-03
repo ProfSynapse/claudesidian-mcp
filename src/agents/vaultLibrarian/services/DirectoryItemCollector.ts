@@ -15,6 +15,7 @@
  */
 
 import { Plugin, TFile, TFolder, TAbstractFile } from 'obsidian';
+import { isGlobPattern, globToRegex } from '../../../utils/pathUtils';
 
 /**
  * Service for collecting directory items
@@ -44,7 +45,22 @@ export class DirectoryItemCollector {
     for (const path of paths) {
       const normalizedPath = this.normalizePath(path);
 
-      if (normalizedPath === '/' || normalizedPath === '') {
+      if (isGlobPattern(normalizedPath)) {
+        // Handle glob pattern
+        const regex = globToRegex(normalizedPath);
+        const vaultItems = this.plugin.app.vault.getAllLoadedFiles();
+        
+        for (const item of vaultItems) {
+          // Skip root folder itself if it comes up
+          if (item.path === '/') continue;
+
+          if (regex.test(item.path)) {
+             if (this.matchesSearchType(item, searchType)) {
+                allItems.push(item as TFile | TFolder);
+             }
+          }
+        }
+      } else if (normalizedPath === '/' || normalizedPath === '') {
         // Root path - get all vault items
         const vaultItems = this.plugin.app.vault.getAllLoadedFiles()
           .filter(file => this.matchesSearchType(file, searchType)) as (TFile | TFolder)[];

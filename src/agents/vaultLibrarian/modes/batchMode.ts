@@ -227,7 +227,7 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
               },
               paths: {
                 type: 'array',
-                description: 'Restrict this search to specific folder paths',
+                description: 'Restrict this search to specific folder paths. Supports glob patterns (e.g., "folder/*.md", "**/*.ts").',
                 items: { type: 'string' }
               },
               includeContent: {

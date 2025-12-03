@@ -189,3 +189,35 @@ export function isValidPath(path: string): boolean {
 
     return true;
 }
+
+/**
+ * Checks if a string contains glob characters
+ */
+export function isGlobPattern(pattern: string): boolean {
+    return /[*?\[\]{}]/.test(pattern);
+}
+
+/**
+ * Converts a glob pattern to a RegExp
+ * Supports * (wildcard), ** (recursive wildcard), ? (single char)
+ */
+export function globToRegex(pattern: string): RegExp {
+    // Escape special regex characters except *, ?, [, ], {, }
+    let regexString = pattern
+        .replace(/[.+^${}()|\\]/g, '\\$&')
+        // Handle ** (recursive wildcard)
+        .replace(/\*\*/g, '.*')
+        // Handle * (single level wildcard) - matches anything except /
+        .replace(/(?<!\.)\*/g, '[^/]*')
+        // Handle ? (single char)
+        .replace(/\?/g, '.')
+        // Handle brackets []
+        .replace(/\[!/g, '[^')
+        .replace(/\[/g, '[')
+        .replace(/\]/g, ']')
+        // Handle braces {} - simplified support for {a,b}
+        .replace(/\{([^}]+)\}/g, (_, options) => `(${options.replace(/,/g, '|')})`);
+    
+    // Anchor to start and end
+    return new RegExp(`^${regexString}$`);
+}
