@@ -205,13 +205,6 @@ export class MessageDisplay {
         }
       : message;
 
-    if (displayMessage.toolCalls && displayMessage.toolCalls.length > 0) {
-      console.log('[MessageDisplay] Rendering message with tool calls', {
-        messageId: displayMessage.id,
-        count: displayMessage.toolCalls.length
-      });
-    }
-
     const bubble = new MessageBubble(
       displayMessage,
       this.app,

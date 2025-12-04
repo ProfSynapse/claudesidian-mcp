@@ -87,16 +87,6 @@ export class ConversationService {
         pageSize: paginationOptions?.pageSize ?? 1000
       });
 
-      const toolCallCount = messagesResult.items.reduce((acc, msg) => acc + (msg.toolCalls?.length || 0), 0);
-      if (toolCallCount > 0) {
-        console.log('[TOOL_RETRIEVED]', {
-          conversationId: id,
-          stage: 'ConversationService.getConversation',
-          messages: messagesResult.items.length,
-          toolCallCount
-        });
-      }
-
       // Convert to legacy format
       const conversation = this.convertToLegacyConversation(metadata, messagesResult.items);
 

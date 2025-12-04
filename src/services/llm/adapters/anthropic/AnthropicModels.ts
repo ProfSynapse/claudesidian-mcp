@@ -42,7 +42,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
     }
   },
 
-  // Claude 4 models
+  // Claude 4 models - All Claude 4+ models support extended thinking per Anthropic docs
   {
     provider: 'anthropic',
     name: 'Claude 4 Opus',
@@ -56,7 +56,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
   {
@@ -72,7 +72,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
   {
@@ -88,7 +88,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
   {
@@ -104,7 +104,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   },
   {
@@ -121,7 +121,7 @@ export const ANTHROPIC_MODELS: ModelSpec[] = [
       supportsImages: true,
       supportsFunctions: true,
       supportsStreaming: true,
-      supportsThinking: false
+      supportsThinking: true
     }
   }
 ];

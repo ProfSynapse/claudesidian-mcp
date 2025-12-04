@@ -324,6 +324,13 @@ export class ChatView extends ItemView {
   // Event Handlers
 
   private async handleConversationSelected(conversation: ConversationData): Promise<void> {
+    // Cancel any ongoing generation from the previous conversation
+    // This prevents the loading state from blocking the new conversation
+    if (this.messageManager.getIsLoading()) {
+      this.messageManager.cancelCurrentGeneration();
+      this.streamingController.cleanup();
+    }
+
     (this.modelAgentManager as any).currentConversationId = conversation.id;
     await this.modelAgentManager.initializeFromConversation(conversation.id);
     this.messageDisplay.setConversation(conversation);

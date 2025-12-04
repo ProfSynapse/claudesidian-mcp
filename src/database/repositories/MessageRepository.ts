@@ -201,16 +201,6 @@ export class MessageRepository
         } as any
       );
 
-      if (data.toolCalls?.length || data.reasoning) {
-        console.log('[TOOL_SAVED]', {
-          conversationId,
-          messageId: id,
-          stage: 'add',
-          toolCallCount: data.toolCalls?.length || 0,
-          hasReasoning: !!data.reasoning
-        });
-      }
-
       // 2. Update SQLite cache
       await this.sqliteCache.run(
         `INSERT INTO ${this.tableName}
@@ -318,15 +308,6 @@ export class MessageRepository
           `UPDATE ${this.tableName} SET ${setClauses.join(', ')} WHERE id = ?`,
           params
         );
-      }
-
-      if ((data.toolCalls && data.toolCalls.length > 0) || data.reasoning !== undefined) {
-        console.log('[TOOL_SAVED]', {
-          messageId,
-          stage: 'update',
-          toolCallCount: data.toolCalls?.length || 0,
-          hasReasoning: data.reasoning !== undefined
-        });
       }
 
       // 3. Invalidate cache

@@ -30,15 +30,6 @@ export class ToolBubbleFactory {
   static createToolBubble(options: ToolBubbleFactoryOptions): HTMLElement {
     const { message, parseParameterValue, getToolCallArguments, progressiveToolAccordions } = options;
 
-    if (message.toolCalls && message.toolCalls.length > 0) {
-      console.log('[TOOL_RENDER]', {
-        messageId: message.id,
-        stage: 'createToolBubble',
-        toolCallCount: message.toolCalls.length,
-        toolCallIds: message.toolCalls.map(tc => tc.id)
-      });
-    }
-
     const toolContainer = document.createElement('div');
     toolContainer.addClass('message-container');
     toolContainer.addClass('message-tool');

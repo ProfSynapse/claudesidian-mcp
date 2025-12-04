@@ -707,10 +707,16 @@ export class StreamingOrchestrator {
         generateOptions.systemPrompt
       ) as any[];
 
+      // IMPORTANT: Disable thinking for tool continuations
+      // Anthropic requires assistant messages to start with a thinking block when thinking is enabled,
+      // but we don't have access to the original thinking content here.
+      // The thinking already happened in the initial response, so we disable it for continuations.
+      // See: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
       return {
         ...generateOptions,
         conversationHistory,
-        systemPrompt: generateOptions.systemPrompt
+        systemPrompt: generateOptions.systemPrompt,
+        enableThinking: false // Disable thinking for tool continuations
       };
     } else if (isGoogleModel) {
       // Build proper Google/Gemini conversation history with functionCall and functionResponse

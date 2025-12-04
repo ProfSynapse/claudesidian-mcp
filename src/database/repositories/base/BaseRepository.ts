@@ -141,7 +141,6 @@ export abstract class BaseRepository<T> implements IRepository<T> {
   ): Promise<E> {
     try {
       const event = await this.jsonlWriter.appendEvent<E>(path, eventData);
-      console.log(`[${this.entityType}Repository] Wrote event: ${event.type} (${event.id})`);
       return event;
     } catch (error) {
       console.error(`[${this.entityType}Repository] Failed to write event:`, error);

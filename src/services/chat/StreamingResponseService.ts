@@ -222,13 +222,6 @@ export class StreamingResponseService {
               msg.state = 'complete';
               if (toolCalls) {
                 msg.toolCalls = toolCalls;
-                console.log('[TOOL_SAVED]', {
-                  messageId,
-                  conversationId,
-                  stage: 'stream_finalize',
-                  toolCallCount: toolCalls.length,
-                  hasReasoning: !!msg.reasoning
-                });
               }
 
               // Only update cost/usage if we have values (don't overwrite with undefined)

@@ -319,20 +319,25 @@ export class MessageManager {
 
   /**
    * Cancel current generation (abort streaming)
+   * Always resets loading state even if no active abort controller
    */
   cancelCurrentGeneration(): void {
-    if (this.currentAbortController && this.currentStreamingMessageId) {
-      const messageId = this.currentStreamingMessageId;
+    const messageId = this.currentStreamingMessageId;
 
-      // Immediately abort the stream
+    // Abort the stream if active
+    if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
-      this.currentStreamingMessageId = null;
+    }
 
-      // Immediately reset loading state
-      this.setLoading(false);
+    // Always reset streaming message ID
+    this.currentStreamingMessageId = null;
 
-      // Fire immediate abort event
+    // Always reset loading state (prevents stuck state)
+    this.setLoading(false);
+
+    // Fire abort event if we had an active message
+    if (messageId) {
       this.events.onGenerationAborted(messageId, '');
     }
   }
