@@ -10,14 +10,14 @@
 import { Notice } from 'obsidian';
 import type { Plugin } from 'obsidian';
 import type { Settings } from '../../settings';
-import type { SettingsTab } from '../../components/SettingsTab';
+import type { SettingsView } from '../../settings/SettingsView';
 import { UpdateManager } from '../../utils/UpdateManager';
 
 export interface BackgroundProcessorConfig {
     plugin: Plugin;
     settings: Settings;
     serviceManager: any;
-    settingsTab?: SettingsTab;
+    settingsTab?: SettingsView;
     getService: <T>(name: string, timeoutMs?: number) => Promise<T | null>;
     waitForService: <T>(serviceName: string, timeoutMs?: number) => Promise<T | null>;
     isInitialized: () => boolean;
@@ -135,7 +135,7 @@ export class BackgroundProcessor {
     /**
      * Update settings tab reference (used when settings tab is created)
      */
-    setSettingsTab(settingsTab: SettingsTab): void {
+    setSettingsTab(settingsTab: SettingsView): void {
         this.config.settingsTab = settingsTab;
     }
 

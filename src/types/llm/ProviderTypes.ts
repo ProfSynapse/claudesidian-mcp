@@ -4,6 +4,19 @@
  */
 
 /**
+ * Thinking effort levels - unified across all providers
+ */
+export type ThinkingEffort = 'low' | 'medium' | 'high';
+
+/**
+ * Default thinking settings for models that support extended thinking
+ */
+export interface DefaultThinkingSettings {
+  enabled: boolean;
+  effort: ThinkingEffort;
+}
+
+/**
  * Model configuration with enabled status and optional description
  */
 export interface ModelConfig {
@@ -46,6 +59,7 @@ export interface LLMProviderSettings {
     [providerId: string]: LLMProviderConfig;
   };
   defaultModel: DefaultModelSettings;
+  defaultThinking?: DefaultThinkingSettings; // Default thinking settings for supported models
   monthlyBudget?: number; // Monthly budget in USD for LLM usage
 }
 
@@ -107,5 +121,9 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LLMProviderSettings = {
   defaultModel: {
     provider: 'openai',
     model: 'gpt-4o'
+  },
+  defaultThinking: {
+    enabled: false,
+    effort: 'medium'
   }
 };

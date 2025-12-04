@@ -11,7 +11,6 @@
 import { Plugin, Notice } from 'obsidian';
 import { ServiceManager } from './ServiceManager';
 import { Settings } from '../settings';
-import { SettingsTab } from '../components/SettingsTab';
 import { MCPConnector } from '../connector';
 import { UpdateManager } from '../utils/UpdateManager';
 import { ServiceRegistrar } from './services/ServiceRegistrar';

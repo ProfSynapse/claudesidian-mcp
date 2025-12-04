@@ -9,7 +9,8 @@
 
 import type { Plugin } from 'obsidian';
 import type { Settings } from '../../settings';
-import { SettingsTab } from '../../components/SettingsTab';
+// Use new SettingsView (tab-based UI) instead of old SettingsTab (accordion-based)
+import { SettingsView } from '../../settings/SettingsView';
 import type { MCPConnector } from '../../connector';
 import type { BackgroundProcessor } from '../background/BackgroundProcessor';
 
@@ -25,7 +26,7 @@ export interface SettingsTabManagerConfig {
 
 export class SettingsTabManager {
     private config: SettingsTabManagerConfig;
-    private settingsTab?: SettingsTab;
+    private settingsTab?: SettingsView;
 
     constructor(config: SettingsTabManagerConfig) {
         this.config = config;
@@ -46,8 +47,8 @@ export class SettingsTabManager {
                 services[serviceName] = this.config.serviceManager.getServiceIfReady(serviceName);
             }
             
-            // Create settings tab with current state
-            this.settingsTab = new SettingsTab(
+            // Create settings tab with current state (using new tab-based SettingsView)
+            this.settingsTab = new SettingsView(
                 this.config.app,
                 this.config.plugin,
                 this.config.settings,
@@ -85,7 +86,7 @@ export class SettingsTabManager {
     /**
      * Get the settings tab instance
      */
-    getSettingsTab(): SettingsTab | undefined {
+    getSettingsTab(): SettingsView | undefined {
         return this.settingsTab;
     }
 

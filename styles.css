@@ -3912,3 +3912,805 @@ a:hover {
 .is-hidden {
     display: none !important;
 }
+
+/* ===========================================
+   Nexus Settings UI - Tab-Based Navigation
+   =========================================== */
+
+/* Settings container */
+.nexus-settings {
+    max-width: 100%;
+}
+
+/* Header section */
+.nexus-settings-header {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 16px;
+}
+
+.nexus-settings-header h2 {
+    margin: 0 0 4px 0;
+    font-size: 1.5em;
+}
+
+.nexus-settings-desc {
+    color: var(--text-muted);
+    margin: 0 0 12px 0;
+}
+
+.nexus-settings-version-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.nexus-settings-version {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.nexus-update-badge {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8em;
+}
+
+/* Back button */
+.nexus-back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-normal);
+    cursor: pointer;
+    margin-bottom: 16px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: var(--background-modifier-hover);
+    border: 1px solid var(--background-modifier-border);
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.nexus-back-button:hover {
+    background: var(--background-modifier-border);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.nexus-back-button:active {
+    transform: translateY(1px);
+}
+
+.nexus-back-button-icon {
+    display: flex;
+    align-items: center;
+}
+
+.nexus-back-button-icon svg {
+    display: block;
+}
+
+/* Skeleton loading cards */
+@keyframes nexus-skeleton-pulse {
+    0%, 100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.nexus-skeleton-card {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    animation: nexus-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.nexus-skeleton-title {
+    height: 20px;
+    width: 60%;
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.nexus-skeleton-description {
+    height: 14px;
+    width: 80%;
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.nexus-skeleton-actions {
+    height: 24px;
+    width: 40%;
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+/* List items */
+.nexus-list-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    transition: background-color 0.1s ease;
+}
+
+.nexus-list-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.nexus-list-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.nexus-list-item-title {
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.nexus-list-item-subtitle {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Status badges */
+.nexus-status-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.nexus-status-badge.configured {
+    background: var(--background-modifier-success);
+    color: var(--text-on-accent);
+}
+
+.nexus-status-badge.not-configured {
+    color: var(--text-muted);
+    background: var(--background-modifier-border);
+}
+
+/* Provider defaults section */
+.nexus-provider-defaults {
+    background: var(--background-secondary);
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+/* Provider group titles */
+.nexus-provider-group-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin: 24px 0 8px 0;
+    padding: 0 4px;
+}
+
+/* Get Started setup paths */
+.nexus-setup-paths {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+}
+
+@media (max-width: 500px) {
+    .nexus-setup-paths {
+        grid-template-columns: 1fr;
+    }
+}
+
+.nexus-setup-path {
+    padding: 24px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+}
+
+.nexus-setup-path:hover {
+    border-color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+}
+
+.nexus-setup-path-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+}
+
+.nexus-setup-path-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.nexus-setup-path-desc {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+/* MCP config output */
+.nexus-mcp-output {
+    background: var(--background-primary-alt);
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* MCP config input */
+.nexus-mcp-input {
+    width: 100%;
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+}
+
+/* Config path display */
+.nexus-config-path {
+    background: var(--background-primary-alt);
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.nexus-config-path code {
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+    word-break: break-all;
+}
+
+/* Setup steps */
+.nexus-setup-step {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.nexus-setup-step:last-child {
+    border-bottom: none;
+}
+
+.nexus-setup-step h4 {
+    margin: 0 0 8px 0;
+}
+
+/* Setup instructions list */
+.nexus-setup-instructions {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.nexus-setup-instructions li {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+/* Copy container */
+.nexus-copy-container {
+    margin-top: 12px;
+}
+
+/* Placeholder message */
+.nexus-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Loading message */
+.nexus-loading-message {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 16px;
+}
+
+/* Error message */
+.nexus-error {
+    color: var(--text-error);
+    padding: 16px;
+    background: var(--background-modifier-error);
+    border-radius: 6px;
+}
+
+/* Detail view title */
+.nexus-detail-title {
+    margin-bottom: 16px;
+}
+
+/* Form actions container */
+.nexus-form-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Modern Form - Stacked layout for cleaner look */
+.nexus-modern-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 560px;
+}
+
+.nexus-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.nexus-form-field-inline {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.nexus-form-label {
+    font-size: var(--font-ui-small);
+    font-weight: var(--font-semibold);
+    color: var(--text-normal);
+}
+
+.nexus-form-hint {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    margin-top: -2px;
+}
+
+.nexus-form-input,
+.nexus-form-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    font-family: var(--font-interface);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nexus-form-input:focus,
+.nexus-form-textarea:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+.nexus-form-input::placeholder,
+.nexus-form-textarea::placeholder {
+    color: var(--text-faint);
+}
+
+.nexus-form-textarea {
+    resize: vertical;
+    min-height: 60px;
+    line-height: 1.5;
+}
+
+.nexus-form-textarea-large {
+    min-height: 160px;
+}
+
+/* Toggle styling */
+.nexus-toggle-label-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nexus-toggle-wrapper {
+    flex-shrink: 0;
+}
+
+.nexus-toggle-checkbox {
+    width: 42px;
+    height: 24px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--background-modifier-border-hover);
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.nexus-toggle-checkbox::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: var(--background-primary);
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.nexus-toggle-checkbox:checked {
+    background: var(--interactive-accent);
+}
+
+.nexus-toggle-checkbox:checked::before {
+    transform: translateX(18px);
+}
+
+/* Form select dropdown */
+.nexus-form-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    font-family: var(--font-interface);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.nexus-form-select:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+/* Form section (for grouped items like workflows/files) */
+.nexus-form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+    margin-top: 8px;
+}
+
+/* Item list container */
+.nexus-item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Item row (workflow or file entry) */
+.nexus-item-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+}
+
+/* Item info section */
+.nexus-item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.nexus-item-title {
+    font-weight: var(--font-medium);
+    color: var(--text-normal);
+}
+
+.nexus-item-subtitle {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Item input (for key files) */
+.nexus-item-input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Item actions */
+.nexus-item-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Small buttons for item actions */
+.nexus-btn-small {
+    padding: 4px 10px;
+    font-size: var(--font-ui-smaller);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nexus-btn-small:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.nexus-btn-danger {
+    color: var(--text-error);
+}
+
+.nexus-btn-danger:hover {
+    background: var(--background-modifier-error);
+    border-color: var(--background-modifier-error);
+    color: var(--text-on-accent);
+}
+
+/* Add button */
+.nexus-btn-add {
+    align-self: flex-start;
+    padding: 6px 12px;
+    font-size: var(--font-ui-small);
+    border: 1px dashed var(--background-modifier-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-top: 4px;
+}
+
+.nexus-btn-add:hover {
+    border-color: var(--interactive-accent);
+    color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+}
+
+/* File Picker */
+.nexus-file-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.nexus-file-picker-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nexus-file-picker-left h3 {
+    margin: 0;
+}
+
+.nexus-file-picker-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.nexus-file-picker-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    margin-top: 12px;
+}
+
+.nexus-file-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background 0.1s ease;
+}
+
+.nexus-file-item:last-child {
+    border-bottom: none;
+}
+
+.nexus-file-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.nexus-file-item-selected {
+    background: var(--background-modifier-hover);
+}
+
+.nexus-file-item-selected .nexus-file-name {
+    color: var(--interactive-accent);
+}
+
+.nexus-file-name {
+    font-weight: var(--font-medium);
+    color: var(--text-normal);
+}
+
+.nexus-file-folder {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+}
+
+.nexus-file-path {
+    color: var(--text-normal);
+}
+
+.nexus-file-hint {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+
+.nexus-file-picker-hint,
+.nexus-file-picker-empty,
+.nexus-file-picker-more {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.nexus-file-picker-more {
+    padding: 12px;
+    background: var(--background-secondary);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Folder Tree */
+.nexus-folder-tree {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 8px 0;
+}
+
+.nexus-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.nexus-tree-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+.nexus-tree-folder {
+    font-weight: var(--font-medium);
+}
+
+.nexus-tree-file {
+    color: var(--text-normal);
+}
+
+.nexus-tree-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.nexus-tree-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.nexus-tree-folder .nexus-tree-icon {
+    color: var(--text-accent);
+}
+
+.nexus-tree-checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.nexus-tree-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nexus-tree-children {
+    /* Children container - no special styling needed */
+}
+
+/* Depth-based indentation using data attributes */
+.nexus-tree-row[data-depth="0"],
+.nexus-tree-empty[data-depth="1"] { padding-left: 16px; }
+
+.nexus-tree-row[data-depth="1"],
+.nexus-tree-empty[data-depth="2"] { padding-left: 36px; }
+
+.nexus-tree-row[data-depth="2"],
+.nexus-tree-empty[data-depth="3"] { padding-left: 56px; }
+
+.nexus-tree-row[data-depth="3"],
+.nexus-tree-empty[data-depth="4"] { padding-left: 76px; }
+
+.nexus-tree-row[data-depth="4"],
+.nexus-tree-empty[data-depth="5"] { padding-left: 96px; }
+
+.nexus-tree-row[data-depth="5"],
+.nexus-tree-empty[data-depth="6"] { padding-left: 116px; }
+
+.nexus-tree-row[data-depth="6"],
+.nexus-tree-empty[data-depth="7"] { padding-left: 136px; }
+
+.nexus-tree-row[data-depth="7"],
+.nexus-tree-empty[data-depth="8"] { padding-left: 156px; }
+
+.nexus-tree-row[data-depth="8"],
+.nexus-tree-empty[data-depth="9"] { padding-left: 176px; }
+
+.nexus-tree-row[data-depth="9"],
+.nexus-tree-empty[data-depth="10"] { padding-left: 196px; }
+
+.nexus-tree-row[data-depth="10"],
+.nexus-tree-empty[data-depth="11"] { padding-left: 216px; }
+
+.nexus-tree-empty {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-right: 12px;
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+    font-style: italic;
+}
+
+.nexus-file-picker-info {
+    margin-bottom: 8px;
+}
+
+.nexus-selected-count {
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+}
+
+/* Empty state */
+.nexus-empty-state {
+    text-align: center;
+    padding: 32px;
+}
+
+.nexus-empty-message {
+    color: var(--text-muted);
+}
