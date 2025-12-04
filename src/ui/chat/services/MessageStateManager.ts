@@ -50,12 +50,13 @@ export class MessageStateManager {
     conversation.messages.push(userMessage);
     this.events.onMessageAdded(userMessage);
 
-    // Persist to storage and get real ID
+    // Persist to storage - pass the same ID to ensure consistency
     const userMessageResult = await this.chatService.addMessage({
       conversationId: conversation.id,
       role: 'user',
       content: content,
-      metadata: metadata
+      metadata: metadata,
+      id: userMessage.id // Use same ID as in-memory message to avoid mismatch
     });
 
     // Update with real ID from repository

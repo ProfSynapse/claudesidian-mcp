@@ -142,6 +142,7 @@ export class ChatService {
     content: string;
     toolCalls?: any[];
     metadata?: any;
+    id?: string; // Optional: specify messageId for consistency with in-memory state
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       await this.conversationManager.addMessage({
@@ -149,11 +150,13 @@ export class ChatService {
         role: params.role,
         content: params.content,
         toolCalls: params.toolCalls,
-        metadata: params.metadata
+        metadata: params.metadata,
+        id: params.id
       });
 
       return {
-        success: true
+        success: true,
+        messageId: params.id // Return the ID that was used
       };
     } catch (error) {
       console.error('Failed to add message:', error);
