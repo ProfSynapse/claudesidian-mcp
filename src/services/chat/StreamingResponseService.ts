@@ -154,7 +154,6 @@ export class StreamingResponseService {
 
       // Stream the response from LLM service with MCP tools
       let toolCalls: any[] | undefined = undefined;
-      let toolCallsSaved = false; // Track if we've saved the tool call message
       this.dependencies.toolCallService.resetDetectedTools(); // Reset tool detection state for new message
 
       // Track usage and cost for conversation tracking
@@ -177,18 +176,6 @@ export class StreamingResponseService {
         // Extract tool calls when available and handle progressive display
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
-
-          // Save assistant message with tool calls immediately when detected (before pingpong)
-          // This happens ONCE when tool calls are first complete
-          if (chunk.toolCallsReady && !toolCallsSaved) {
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: null, // OpenAI format: content is null when making tool calls
-              toolCalls: toolCalls
-            });
-            toolCallsSaved = true;
-          }
 
           // Handle progressive tool call detection (fires 'detected' and 'updated' events)
           if (toolCalls) {
@@ -249,16 +236,7 @@ export class StreamingResponseService {
           // Handle tool calls - if present, add separate message for pingpong response
           if (toolCalls && toolCalls.length > 0) {
             // Had tool calls - the placeholder is the tool call message, add pingpong response separately
-            await this.dependencies.conversationService.addMessage({
-              conversationId,
-              role: 'assistant',
-              content: accumulatedContent, // Pingpong response text
-              cost: finalCost,
-              usage: finalUsage,
-              provider: provider,
-              model: llmOptions.model
-              // No toolCalls - this is the response AFTER seeing tool results
-            });
+            // No separate message needed; placeholder already holds tool calls and final content
           }
         }
 

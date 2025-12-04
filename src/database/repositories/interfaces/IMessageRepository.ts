@@ -26,12 +26,14 @@ export interface CreateMessageData extends Omit<MessageData, 'id' | 'conversatio
 
 /**
  * Data for updating an existing message
- * Only content, state, and reasoning can be updated
+ * Only content, state, reasoning, and tool call data can be updated
  */
 export interface UpdateMessageData {
   content?: string | null;
   state?: 'draft' | 'streaming' | 'complete' | 'aborted' | 'invalid';
   reasoning?: string;
+  toolCalls?: MessageData['toolCalls'];
+  toolCallId?: string | null;
 }
 
 /**

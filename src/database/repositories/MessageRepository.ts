@@ -229,7 +229,7 @@ export class MessageRepository
 
   /**
    * Update an existing message
-   * Only content, state, and reasoning can be updated
+   * Only content, state, reasoning, and tool call data can be updated
    */
   async update(messageId: string, data: UpdateMessageData): Promise<void> {
     try {
@@ -253,7 +253,16 @@ export class MessageRepository
           data: {
             content: data.content ?? undefined,
             state: data.state,
-            reasoning: data.reasoning
+            reasoning: data.reasoning,
+            tool_calls: data.toolCalls?.map(tc => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments
+              }
+            })),
+            tool_call_id: data.toolCallId ?? undefined
           }
         } as any
       );
@@ -273,6 +282,14 @@ export class MessageRepository
       if (data.reasoning !== undefined) {
         setClauses.push('reasoning_content = ?');
         params.push(data.reasoning);
+      }
+      if (data.toolCalls !== undefined) {
+        setClauses.push('tool_calls_json = ?');
+        params.push(data.toolCalls ? JSON.stringify(data.toolCalls) : null);
+      }
+      if (data.toolCallId !== undefined) {
+        setClauses.push('tool_call_id = ?');
+        params.push(data.toolCallId);
       }
 
       if (setClauses.length > 0) {

@@ -1292,7 +1292,16 @@ export class HybridStorageAdapter implements IStorageAdapter {
           data: {
             content: updates.content ?? undefined,
             state: updates.state,
-            reasoning: updates.reasoning
+            reasoning: updates.reasoning,
+            tool_calls: updates.toolCalls?.map(tc => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments
+              }
+            })),
+            tool_call_id: updates.toolCallId
           }
         }
       );
@@ -1304,6 +1313,8 @@ export class HybridStorageAdapter implements IStorageAdapter {
       if (updates.content !== undefined) { setClauses.push('content = ?'); params.push(updates.content); }
       if (updates.state !== undefined) { setClauses.push('state = ?'); params.push(updates.state); }
       if (updates.reasoning !== undefined) { setClauses.push('reasoning_content = ?'); params.push(updates.reasoning); }
+      if (updates.toolCalls !== undefined) { setClauses.push('tool_calls_json = ?'); params.push(updates.toolCalls ? JSON.stringify(updates.toolCalls) : null); }
+      if (updates.toolCallId !== undefined) { setClauses.push('tool_call_id = ?'); params.push(updates.toolCallId); }
 
       if (setClauses.length > 0) {
         params.push(messageId);

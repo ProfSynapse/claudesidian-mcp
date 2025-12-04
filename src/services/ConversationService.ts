@@ -292,10 +292,25 @@ export class ConversationService {
       if (updates.messages && updates.messages.length > 0) {
         // Update each message's persisted content/state/reasoning
         for (const msg of updates.messages) {
+          const convertedToolCalls = msg.toolCalls?.map(tc => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: tc.function || {
+              name: (tc as any).name || 'unknown_tool',
+              arguments: JSON.stringify((tc as any).parameters || {})
+            },
+            result: (tc as any).result,
+            success: (tc as any).success,
+            error: (tc as any).error,
+            executionTime: (tc as any).executionTime
+          }));
+
           await this.storageAdapter.updateMessage(id, msg.id, {
             content: msg.content ?? null,
             state: msg.state,
-            reasoning: (msg as any).reasoning
+            reasoning: (msg as any).reasoning,
+            toolCalls: convertedToolCalls,
+            toolCallId: (msg as any).toolCallId ?? null
           });
         }
 
