@@ -6,6 +6,7 @@
 import { WorkspaceContext } from '../../database/types/workspace/WorkspaceTypes';
 import { WorkspaceState } from '../../database/types/session/SessionTypes';
 import { TraceMetadata } from '../../database/types/memory/MemoryTypes';
+import { PaginatedResult } from '../pagination/PaginationTypes';
 
 /**
  * Individual conversation file structure (conversations/{id}.json)
@@ -32,6 +33,8 @@ export interface IndividualConversation {
     totalTokens?: number;
     currency?: string;
   };
+  // Optional pagination metadata when messages are loaded with pagination
+  messagePagination?: PaginatedResult<ConversationMessage>;
 }
 
 /**

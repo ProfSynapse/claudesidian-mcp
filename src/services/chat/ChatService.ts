@@ -262,8 +262,19 @@ export class ChatService {
   }
 
   /** Get conversation by ID */
-  async getConversation(id: string): Promise<ConversationData | null> {
-    return this.conversationQueryService.getConversation(id);
+  async getConversation(
+    id: string,
+    paginationOptions?: { page?: number; pageSize?: number }
+  ): Promise<ConversationData | null> {
+    return this.conversationQueryService.getConversation(id, paginationOptions);
+  }
+
+  /** Get messages for a conversation (paginated) */
+  async getMessages(
+    conversationId: string,
+    options?: { page?: number; pageSize?: number }
+  ): Promise<any> {
+    return this.conversationQueryService.getMessages(conversationId, options);
   }
 
   /** List conversations */

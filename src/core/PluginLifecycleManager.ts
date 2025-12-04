@@ -282,20 +282,31 @@ export class PluginLifecycleManager {
             if (stateManager && typeof (stateManager as any).saveState === 'function') {
                 await (stateManager as any).saveState();
             }
-            
+
+            // Close HybridStorageAdapter to properly shut down SQLite
+            const storageAdapter = this.config.serviceManager?.getServiceIfReady('hybridStorageAdapter');
+            if (storageAdapter && typeof (storageAdapter as any).close === 'function') {
+                try {
+                    await (storageAdapter as any).close();
+                    console.log('[PluginLifecycleManager] HybridStorageAdapter closed successfully');
+                } catch (error) {
+                    console.warn('[PluginLifecycleManager] Error closing HybridStorageAdapter:', error);
+                }
+            }
+
             // Cleanup settings tab accordions
             this.settingsTabManager.cleanup();
-            
+
             // Cleanup service manager (handles all service cleanup)
             if (this.config.serviceManager) {
                 await this.config.serviceManager.stop();
             }
-            
+
             // Stop the MCP connector
             if (this.config.connector) {
                 await this.config.connector.stop();
             }
-            
+
         } catch (error) {
             console.error('[PluginLifecycleManager] Error during cleanup:', error);
         }

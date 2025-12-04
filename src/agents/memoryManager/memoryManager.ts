@@ -196,8 +196,9 @@ export class MemoryManagerAgent extends BaseAgent {
             return super.executeMode(modeSlug, params);
           }
           
-          const activeSessions = await memoryService.getSessions(workspaceId);
-          
+          const sessionsResult = await memoryService.getSessions(workspaceId);
+          const activeSessions = sessionsResult.items;
+
           if (activeSessions && activeSessions.length > 0) {
             sessionId = activeSessions[0].id;
           }

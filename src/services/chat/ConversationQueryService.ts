@@ -11,6 +11,7 @@
  */
 
 import { ConversationData } from '../../types/chat/ChatTypes';
+import { PaginationParams, PaginatedResult } from '../../types/pagination/PaginationTypes';
 
 export class ConversationQueryService {
   constructor(
@@ -19,13 +20,50 @@ export class ConversationQueryService {
 
   /**
    * Get a conversation by ID
+   *
+   * @param id - Conversation ID
+   * @param paginationOptions - Optional pagination parameters for message loading
+   * @returns Conversation data with paginated messages
    */
-  async getConversation(id: string): Promise<ConversationData | null> {
+  async getConversation(
+    id: string,
+    paginationOptions?: PaginationParams
+  ): Promise<ConversationData | null> {
     try {
-      return await this.conversationService.getConversation(id);
+      return await this.conversationService.getConversation(id, paginationOptions);
     } catch (error) {
       console.error('Failed to get conversation:', error);
       return null;
+    }
+  }
+
+  /**
+   * Get messages for a conversation (paginated)
+   *
+   * Allows fetching messages without loading full conversation metadata.
+   * Useful for lazy loading and infinite scroll implementations.
+   *
+   * @param conversationId - Conversation ID
+   * @param options - Pagination parameters
+   * @returns Paginated result containing messages
+   */
+  async getMessages(
+    conversationId: string,
+    options?: PaginationParams
+  ): Promise<PaginatedResult<any>> {
+    try {
+      return await this.conversationService.getMessages(conversationId, options);
+    } catch (error) {
+      console.error('Failed to get messages:', error);
+      return {
+        items: [],
+        page: 0,
+        pageSize: options?.pageSize ?? 50,
+        totalItems: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false
+      };
     }
   }
 

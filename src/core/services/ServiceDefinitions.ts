@@ -229,9 +229,35 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
         }
     },
 
+    // Hybrid storage adapter (SQLite + JSONL) - optional, graceful fallback to legacy if fails
+    {
+        name: 'hybridStorageAdapter',
+        create: async (context) => {
+            try {
+                const { HybridStorageAdapter } = await import('../../database/adapters/HybridStorageAdapter');
+
+                const adapter = new HybridStorageAdapter({
+                    app: context.app,
+                    basePath: '.nexus',
+                    autoSync: true,
+                    cacheTTL: 60000, // 1 minute query cache
+                    cacheMaxSize: 500
+                });
+
+                await adapter.initialize();
+                console.log('[ServiceDefinitions] HybridStorageAdapter initialized successfully');
+                return adapter;
+            } catch (error) {
+                console.warn('[ServiceDefinitions] HybridStorageAdapter initialization failed, will use legacy storage:', error);
+                return null; // Graceful fallback - services will use legacy backend
+            }
+        }
+    },
+
     // Conversation service for chat storage
     {
         name: 'conversationService',
+        dependencies: ['hybridStorageAdapter'],
         create: async (context) => {
             const { ConversationService } = await import('../../services/ConversationService');
             const { FileSystemService } = await import('../../services/storage/FileSystemService');
@@ -239,7 +265,11 @@ export const CORE_SERVICE_DEFINITIONS: ServiceDefinition[] = [
 
             const fileSystem = new FileSystemService(context.plugin);
             const indexManager = new IndexManager(fileSystem);
-            return new ConversationService(context.plugin, fileSystem, indexManager);
+
+            // Get storage adapter if available (may be null if initialization failed)
+            const storageAdapter = await context.serviceManager.getService('hybridStorageAdapter') as any;
+
+            return new ConversationService(context.plugin, fileSystem, indexManager, storageAdapter || undefined);
         }
     },
 

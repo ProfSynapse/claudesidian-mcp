@@ -1,0 +1,348 @@
+/**
+ * Location: src/database/repositories/ConversationRepository.ts
+ *
+ * Conversation Repository
+ *
+ * Manages conversation entity persistence using hybrid JSONL + SQLite storage.
+ * Each conversation has its own JSONL file containing metadata and messages.
+ *
+ * Storage Strategy:
+ * - JSONL: conversations/conv_{id}.jsonl (source of truth)
+ * - SQLite: conversations table (cache for fast queries)
+ * - FTS: Full-text search on title
+ *
+ * Related Files:
+ * - src/database/repositories/interfaces/IConversationRepository.ts - Interface
+ * - src/database/repositories/base/BaseRepository.ts - Base class
+ * - src/types/storage/HybridStorageTypes.ts - Data types
+ */
+
+import { BaseRepository, RepositoryDependencies } from './base/BaseRepository';
+import { IConversationRepository, CreateConversationData, UpdateConversationData } from './interfaces/IConversationRepository';
+import { ConversationMetadata } from '../../types/storage/HybridStorageTypes';
+import { ConversationCreatedEvent, ConversationUpdatedEvent } from '../interfaces/StorageEvents';
+import { PaginatedResult, PaginationParams } from '../../types/pagination/PaginationTypes';
+import { QueryOptions } from '../interfaces/IStorageAdapter';
+
+/**
+ * Conversation repository implementation
+ *
+ * Stores conversation metadata in SQLite for fast queries.
+ * Each conversation has its own JSONL file for messages and events.
+ */
+export class ConversationRepository
+  extends BaseRepository<ConversationMetadata>
+  implements IConversationRepository {
+
+  protected readonly tableName = 'conversations';
+  protected readonly entityType = 'conversation';
+
+  protected jsonlPath(id: string): string {
+    return `conversations/conv_${id}.jsonl`;
+  }
+
+  constructor(deps: RepositoryDependencies) {
+    super(deps);
+  }
+
+  // ============================================================================
+  // Abstract method implementations
+  // ============================================================================
+
+  protected rowToEntity(row: any): ConversationMetadata {
+    return this.rowToConversation(row);
+  }
+
+  async getAll(options?: PaginationParams): Promise<PaginatedResult<ConversationMetadata>> {
+    return this.getConversations(options);
+  }
+
+  // ============================================================================
+  // Read Operations
+  // ============================================================================
+
+  /**
+   * Get a conversation by ID
+   */
+  async getById(id: string): Promise<ConversationMetadata | null> {
+    return this.getCachedOrFetch(
+      `${this.entityType}:${id}`,
+      async () => {
+        const row = await this.sqliteCache.queryOne<any>(
+          `SELECT * FROM ${this.tableName} WHERE id = ?`,
+          [id]
+        );
+        return row ? this.rowToConversation(row) : null;
+      }
+    );
+  }
+
+  /**
+   * Get all conversations with pagination and filtering
+   */
+  async getConversations(options?: QueryOptions): Promise<PaginatedResult<ConversationMetadata>> {
+    const page = options?.page ?? 0;
+    const pageSize = Math.min(options?.pageSize ?? 25, 200);
+    const sortBy = options?.sortBy ?? 'updated';
+    const sortOrder = options?.sortOrder ?? 'desc';
+
+    // Build WHERE clause
+    let whereClause = '';
+    const params: any[] = [];
+
+    if (options?.filter) {
+      const filters: string[] = [];
+      if (options.filter.vaultName) {
+        filters.push('vault_name = ?');
+        params.push(options.filter.vaultName);
+      }
+      if (options.filter.workspaceId) {
+        filters.push('workspace_id = ?');
+        params.push(options.filter.workspaceId);
+      }
+      if (filters.length > 0) {
+        whereClause = `WHERE ${filters.join(' AND ')}`;
+      }
+    }
+
+    // Count total
+    const countResult = await this.sqliteCache.queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${this.tableName} ${whereClause}`,
+      params
+    );
+    const totalItems = countResult?.count ?? 0;
+
+    // Get data
+    const rows = await this.sqliteCache.query<any>(
+      `SELECT * FROM ${this.tableName} ${whereClause}
+       ORDER BY ${sortBy} ${sortOrder}
+       LIMIT ? OFFSET ?`,
+      [...params, pageSize, page * pageSize]
+    );
+
+    return {
+      items: rows.map((r: any) => this.rowToConversation(r)),
+      page,
+      pageSize,
+      totalItems,
+      totalPages: Math.ceil(totalItems / pageSize),
+      hasNextPage: (page + 1) * pageSize < totalItems,
+      hasPreviousPage: page > 0
+    };
+  }
+
+  /**
+   * Search conversations by title using FTS
+   */
+  async search(query: string): Promise<ConversationMetadata[]> {
+    const rows = await this.sqliteCache.searchConversations(query);
+    return rows.map((r: any) => this.rowToConversation(r));
+  }
+
+  /**
+   * Count conversations matching filter
+   */
+  async count(filter?: Record<string, any>): Promise<number> {
+    let whereClause = '';
+    const params: any[] = [];
+
+    if (filter) {
+      const filters: string[] = [];
+      if (filter.vaultName) {
+        filters.push('vault_name = ?');
+        params.push(filter.vaultName);
+      }
+      if (filters.length > 0) {
+        whereClause = `WHERE ${filters.join(' AND ')}`;
+      }
+    }
+
+    const result = await this.sqliteCache.queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${this.tableName} ${whereClause}`,
+      params
+    );
+    return result?.count ?? 0;
+  }
+
+  // ============================================================================
+  // Write Operations
+  // ============================================================================
+
+  /**
+   * Create a new conversation
+   */
+  async create(data: CreateConversationData): Promise<string> {
+    const id = this.generateId();
+    const now = Date.now();
+
+    try {
+      // 1. Write metadata event to JSONL
+      await this.writeEvent<ConversationCreatedEvent>(
+        this.jsonlPath(id),
+        {
+          type: 'metadata',
+          data: {
+            id,
+            title: data.title,
+            created: data.created ?? now,
+            vault: data.vaultName
+          }
+        } as any
+      );
+
+      // 2. Update SQLite cache
+      await this.sqliteCache.run(
+        `INSERT INTO ${this.tableName} (id, title, created, updated, vault_name, message_count, workspace_id, session_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          data.title,
+          data.created ?? now,
+          data.updated ?? now,
+          data.vaultName,
+          0,
+          data.workspaceId ?? null,
+          data.sessionId ?? null
+        ]
+      );
+
+      // 3. Invalidate cache
+      this.invalidateCache();
+
+      return id;
+
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to create conversation:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing conversation
+   */
+  async update(id: string, data: UpdateConversationData): Promise<void> {
+    try {
+      // 1. Write update event to JSONL
+      await this.writeEvent<ConversationUpdatedEvent>(
+        this.jsonlPath(id),
+        {
+          type: 'conversation_updated',
+          conversationId: id,
+          data: {
+            title: data.title,
+            updated: data.updated ?? Date.now()
+          }
+        } as any
+      );
+
+      // 2. Update SQLite cache
+      const setClauses: string[] = [];
+      const params: any[] = [];
+
+      if (data.title !== undefined) {
+        setClauses.push('title = ?');
+        params.push(data.title);
+      }
+      if (data.workspaceId !== undefined) {
+        setClauses.push('workspace_id = ?');
+        params.push(data.workspaceId);
+      }
+      if (data.sessionId !== undefined) {
+        setClauses.push('session_id = ?');
+        params.push(data.sessionId);
+      }
+
+      // Always update timestamp
+      setClauses.push('updated = ?');
+      params.push(data.updated ?? Date.now());
+
+      params.push(id);
+
+      await this.sqliteCache.run(
+        `UPDATE ${this.tableName} SET ${setClauses.join(', ')} WHERE id = ?`,
+        params
+      );
+
+      // 3. Invalidate cache
+      this.invalidateCache(id);
+
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to update conversation:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a conversation
+   */
+  async delete(id: string): Promise<void> {
+    try {
+      // No specific delete event - just remove from SQLite
+      // Messages are cascaded via foreign key constraint
+      await this.sqliteCache.run(`DELETE FROM ${this.tableName} WHERE id = ?`, [id]);
+
+      // Invalidate cache
+      this.invalidateCache();
+
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to delete conversation:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Increment message count for a conversation
+   */
+  async incrementMessageCount(id: string): Promise<void> {
+    try {
+      await this.sqliteCache.run(
+        `UPDATE ${this.tableName} SET message_count = message_count + 1, updated = ? WHERE id = ?`,
+        [Date.now(), id]
+      );
+
+      this.invalidateCache(id);
+
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to increment message count:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Touch a conversation (update timestamp)
+   */
+  async touch(id: string, timestamp?: number): Promise<void> {
+    try {
+      await this.sqliteCache.run(
+        `UPDATE ${this.tableName} SET updated = ? WHERE id = ?`,
+        [timestamp ?? Date.now(), id]
+      );
+
+      this.invalidateCache(id);
+
+    } catch (error) {
+      console.error('[ConversationRepository] Failed to touch conversation:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // Helper Methods
+  // ============================================================================
+
+  /**
+   * Convert SQLite row to ConversationMetadata
+   */
+  private rowToConversation(row: any): ConversationMetadata {
+    return {
+      id: row.id,
+      title: row.title,
+      created: row.created,
+      updated: row.updated,
+      vaultName: row.vault_name,
+      messageCount: row.message_count,
+      workspaceId: row.workspace_id ?? undefined,
+      sessionId: row.session_id ?? undefined
+    };
+  }
+}

@@ -80,6 +80,38 @@ export type {
   UpdateConversationParams
 } from './chat/ChatTypes';
 
+// Pagination types
+export type {
+  PaginationParams,
+  PaginatedResult
+} from './pagination/PaginationTypes';
+
+export {
+  createEmptyPaginatedResult,
+  calculatePaginationMetadata
+} from './pagination/PaginationTypes';
+
+// Storage types
+export type {
+  DeviceInfo,
+  SyncState,
+  WorkspaceMetadata,
+  SessionMetadata,
+  StateMetadata,
+  StateData,
+  ConversationMetadata,
+  MessageData,
+  MemoryTraceData,
+  ExportFilter,
+  ExportData,
+  WorkspaceExportData,
+  ConversationExportData,
+  SearchResult,
+  SyncResult,
+  StorageEvent,
+  StorageEventType
+} from './storage/HybridStorageTypes';
+
 // Create default settings object
 import { DEFAULT_CUSTOM_PROMPTS_SETTINGS } from './mcp';
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from './llm';

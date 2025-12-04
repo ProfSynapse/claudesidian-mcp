@@ -38,8 +38,8 @@ export class PrefetchManager extends EventEmitter {
 
         try {
             // Get recent sessions for this workspace
-            const sessions = await this.memoryService.getSessions(workspaceId);
-            const recentSessions = sessions
+            const sessionsResult = await this.memoryService.getSessions(workspaceId);
+            const recentSessions = sessionsResult.items
                 .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                 .slice(0, 5);
 
@@ -71,10 +71,10 @@ export class PrefetchManager extends EventEmitter {
             }
 
             // Get recent memory traces
-            const traces = await this.memoryService.getMemoryTraces(sessionId);
+            const tracesResult = await this.memoryService.getMemoryTraces(sessionId);
             const relatedFiles = new Set<string>();
 
-            for (const trace of traces) {
+            for (const trace of tracesResult.items) {
                 const files =
                   (trace.metadata?.input?.files && Array.isArray(trace.metadata.input.files)
                     ? trace.metadata.input.files
@@ -102,8 +102,8 @@ export class PrefetchManager extends EventEmitter {
 
         try {
             // Get the state to find related states
-            const allStates = await this.memoryService.getStates('default-workspace');
-            const state = allStates.find(s => s.id === stateId);
+            const statesResult = await this.memoryService.getStates('default-workspace');
+            const state = statesResult.items.find(s => s.id === stateId);
 
             if (state) {
                 // Prefetch parent session
@@ -113,7 +113,7 @@ export class PrefetchManager extends EventEmitter {
 
                 // Prefetch sibling states (same session)
                 if ((state as any).sessionId) {
-                    const siblingStates = allStates
+                    const siblingStates = statesResult.items
                         .filter(s => (s as any).sessionId === (state as any).sessionId && s.id !== stateId)
                         .sort((a, b) => ((b as any).timestamp ?? 0) - ((a as any).timestamp ?? 0))
                         .slice(0, 3);

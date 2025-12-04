@@ -32,7 +32,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       // Get services from agent
       const memoryService = await this.agent.getMemoryServiceAsync();
       const workspaceService = await this.agent.getWorkspaceServiceAsync();
-      
+
       if (!memoryService) {
         return this.prepareResult(false, undefined, 'Memory service not available');
       }
@@ -44,55 +44,67 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         workspaceId = inheritedContext.workspaceId;
       }
 
-      // Get states (pass sessionId to filter by session, or undefined to get all)
-      const states = await memoryService.getStates(
+      // Prepare pagination options for DB-level pagination
+      // Use pageSize if provided, otherwise fall back to limit for backward compatibility
+      const pageSize = params.pageSize || params.limit;
+      const paginationOptions = {
+        page: params.page ?? 0,
+        pageSize: pageSize
+      };
+
+      // Get states with true DB-level pagination
+      const statesResult = await memoryService.getStates(
         workspaceId || 'default-workspace',
-        params.context.sessionId
+        params.context.sessionId,
+        paginationOptions
       );
 
-      // Note: getStates already filters by sessionId if provided
-      let filteredStates = states;
+      // Extract items from PaginatedResult
+      let processedStates = statesResult.items;
 
-      // Filter by tags if provided
+      // Filter by tags if provided (tags aren't in DB, so must filter in-memory)
+      // Note: This happens AFTER pagination, so may return fewer results than pageSize
       if (params.tags && params.tags.length > 0) {
-        filteredStates = filteredStates.filter(state => {
+        processedStates = processedStates.filter(state => {
           const stateTags = (state.state as any)?.state?.metadata?.tags || [];
           return params.tags!.some(tag => stateTags.includes(tag));
         });
       }
 
-      // Sort states
-      const sortedStates = this.sortStates(filteredStates, params.order || 'desc');
-
-      // Apply limit
-      const limitedStates = params.limit ? sortedStates.slice(0, params.limit) : sortedStates;
+      // Sort states (in-memory sorting for now - TODO: move to DB level)
+      const sortedStates = this.sortStates(processedStates, params.order || 'desc');
 
       // Enhance state data
       const enhancedStates = workspaceService
-        ? await this.enhanceStatesWithContext(limitedStates, workspaceService, params.includeContext)
-        : limitedStates.map(state => ({
+        ? await this.enhanceStatesWithContext(sortedStates, workspaceService, params.includeContext)
+        : sortedStates.map(state => ({
             ...state,
             workspaceName: 'Unknown Workspace',
-            created: state.created || state.timestamp
+            created: state.created || (state as any).timestamp
           }));
 
-      // Prepare result
-      const contextString = workspaceId 
-        ? `Found ${limitedStates.length} state(s) in workspace ${workspaceId}`
-        : `Found ${limitedStates.length} state(s) across all workspaces`;
+      // Prepare pagination metadata from DB result
+      const contextString = workspaceId
+        ? `Found ${sortedStates.length} state(s) on page ${statesResult.page + 1}/${statesResult.totalPages} in workspace ${workspaceId}`
+        : `Found ${sortedStates.length} state(s) on page ${statesResult.page + 1}/${statesResult.totalPages} across all workspaces`;
 
       return this.prepareResult(
         true,
         {
           states: enhancedStates,
-          total: states.length,
-          filtered: limitedStates.length,
+          total: statesResult.totalItems,
+          page: statesResult.page,
+          pageSize: statesResult.pageSize,
+          totalPages: statesResult.totalPages,
+          hasNextPage: statesResult.hasNextPage,
+          hasPreviousPage: statesResult.hasPreviousPage,
           workspaceId: workspaceId,
           filters: {
             sessionId: params.context.sessionId,
             tags: params.tags || [],
             order: params.order || 'desc',
-            limit: params.limit,
+            page: params.page,
+            pageSize: pageSize,
             includeContext: params.includeContext
           }
         },
@@ -191,7 +203,17 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of states to return'
+          description: 'Maximum number of states to return (deprecated, use pageSize instead)'
+        },
+        page: {
+          type: 'number',
+          description: 'Page number for pagination (0-indexed, default: 0)',
+          minimum: 0
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Number of items per page (default: all items if not specified)',
+          minimum: 1
         },
         order: {
           type: 'string',
@@ -205,7 +227,7 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
       },
       additionalProperties: false
     };
-    
+
     return this.getMergedSchema(customSchema);
   }
 

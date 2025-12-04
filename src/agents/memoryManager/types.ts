@@ -313,26 +313,36 @@ export interface ListStatesParams extends MemoryParams {
    * Whether to include state context information
    */
   includeContext?: boolean;
-  
+
   /**
-   * Maximum number of states to return
+   * Maximum number of states to return (deprecated, use pageSize instead)
    */
   limit?: number;
-  
+
   /**
    * Filter states by target session ID
    */
   targetSessionId?: string;
-  
+
   /**
    * Sort order for states (default: desc - newest first)
    */
   order?: 'asc' | 'desc';
-  
+
   /**
    * Filter states by tags
    */
   tags?: string[];
+
+  /**
+   * Page number for pagination (0-indexed)
+   */
+  page?: number;
+
+  /**
+   * Number of items per page for pagination
+   */
+  pageSize?: number;
 }
 
 // Params for loading a state

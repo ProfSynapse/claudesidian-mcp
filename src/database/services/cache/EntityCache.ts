@@ -81,12 +81,12 @@ export class EntityCache extends EventEmitter {
             const associatedFiles = new Set<string>();
 
             // Get sessions for this workspace
-            const sessions = await this.memoryService.getSessions(workspaceId);
-            sessionIds.push(...sessions.map(s => s.id));
+            const sessionsResult = await this.memoryService.getSessions(workspaceId);
+            sessionIds.push(...sessionsResult.items.map(s => s.id));
 
             // Get states for this workspace
-            const states = await this.memoryService.getStates(workspaceId);
-            stateIds.push(...states.map(s => s.id));
+            const statesResult = await this.memoryService.getStates(workspaceId);
+            stateIds.push(...statesResult.items.map(s => s.id));
 
             // Collect associated files
             if (workspace.rootFolder) {
@@ -135,13 +135,13 @@ export class EntityCache extends EventEmitter {
             const session = sessionData;
 
             // Get memory traces for this session
-            const traces = await this.memoryService.getMemoryTraces(sessionId);
-            const traceIds = traces.map(t => t.id);
-            
+            const tracesResult = await this.memoryService.getMemoryTraces(sessionId);
+            const traceIds = tracesResult.items.map(t => t.id);
+
             // Collect associated files
             const associatedFiles = new Set<string>();
             // Note: WorkspaceSession doesn't have activeNote property
-            traces.forEach(trace => {
+            tracesResult.items.forEach(trace => {
                 const files =
                   (trace.metadata?.input?.files && Array.isArray(trace.metadata.input.files)
                     ? trace.metadata.input.files
@@ -175,8 +175,8 @@ export class EntityCache extends EventEmitter {
             }
 
             // Load state data
-            const allStates = await this.memoryService.getStates('default-workspace');
-            const state = allStates.find(s => s.id === stateId);
+            const statesResult = await this.memoryService.getStates('default-workspace');
+            const state = statesResult.items.find(s => s.id === stateId);
 
             if (!state) {
                 return;
@@ -279,8 +279,8 @@ export class EntityCache extends EventEmitter {
         // Batch load uncached items
         if (uncached.length > 0) {
             // Load all states and filter
-            const allStates = await this.memoryService.getStates('default-workspace');
-            const states = allStates.filter(s => uncached.includes(s.id));
+            const statesResult = await this.memoryService.getStates('default-workspace');
+            const states = statesResult.items.filter(s => uncached.includes(s.id));
             
             // Cache the loaded states
             for (const state of states) {

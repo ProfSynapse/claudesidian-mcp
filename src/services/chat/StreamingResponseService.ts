@@ -224,6 +224,7 @@ export class StreamingResponseService {
             if (msg) {
               // Update existing placeholder message
               msg.content = accumulatedContent;
+              msg.state = 'complete';
 
               // Only update cost/usage if we have values (don't overwrite with undefined)
               // This prevents overwriting async updates from OpenRouter's generation API

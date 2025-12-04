@@ -21,6 +21,8 @@ import {
 } from '../../../types/memory/MemorySearchTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
+import { IStorageAdapter } from '../../../database/interfaces/IStorageAdapter';
+import { MemoryTraceData } from '../../../types/storage/HybridStorageTypes';
 import { getNexusPlugin } from '../../../utils/pluginLocator';
 
 export interface MemorySearchProcessorInterface {
@@ -36,14 +38,17 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   private plugin: Plugin;
   private configuration: MemoryProcessorConfiguration;
   private workspaceService?: WorkspaceService;
-  
+  private storageAdapter?: IStorageAdapter;
+
   constructor(
-    plugin: Plugin, 
+    plugin: Plugin,
     config?: Partial<MemoryProcessorConfiguration>,
-    workspaceService?: WorkspaceService
+    workspaceService?: WorkspaceService,
+    storageAdapter?: IStorageAdapter
   ) {
     this.plugin = plugin;
     this.workspaceService = workspaceService;
+    this.storageAdapter = storageAdapter;
     this.configuration = {
       defaultLimit: 20,
       maxLimit: 100,
@@ -241,16 +246,45 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
   }
 
   private async searchLegacyTraces(query: string, options: MemorySearchExecutionOptions): Promise<RawMemoryResult[]> {
+    const workspaceId = options.workspaceId || GLOBAL_WORKSPACE_ID;
+
+    // Use new storage adapter if available
+    if (this.storageAdapter) {
+      try {
+        const result = await this.storageAdapter.searchTraces(
+          workspaceId,
+          query,
+          options.sessionId
+        );
+
+        // Convert MemoryTraceData to RawMemoryResult format
+        return result.map((trace: MemoryTraceData) => ({
+          trace: {
+            id: trace.id,
+            workspaceId: trace.workspaceId,
+            sessionId: trace.sessionId,
+            timestamp: trace.timestamp,
+            type: trace.type || 'generic',
+            content: trace.content,
+            metadata: trace.metadata
+          },
+          similarity: 1.0 // SQLite FTS doesn't provide scores, default to 1.0
+        }));
+      } catch (error) {
+        console.error('[MemorySearchProcessor] Error searching traces via storage adapter:', error);
+        return [];
+      }
+    }
+
+    // Legacy path: use WorkspaceService
     const workspaceService = this.workspaceService || this.getWorkspaceService();
-    
+
     if (!workspaceService) {
       console.warn('[MemorySearchProcessor] No workspaceService available');
       return [];
     }
 
     try {
-      const workspaceId = options.workspaceId || GLOBAL_WORKSPACE_ID;
-      
       // Get the entire workspace
       const workspace = await workspaceService.getWorkspace(workspaceId);
       if (!workspace) {
@@ -261,24 +295,24 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
       // Use Obsidian's native fuzzy search API
       const fuzzySearch = prepareFuzzySearch(query.toLowerCase());
       const results: RawMemoryResult[] = [];
-      
+
       // Loop through all sessions
       if (workspace.sessions) {
         for (const [sessionId, session] of Object.entries(workspace.sessions)) {
           // Loop through all traces in each session
           const traces = Object.values(session.memoryTraces || {});
-          
+
           for (const trace of traces) {
             // Convert THIS trace to JSON string
             const traceJSON = JSON.stringify(trace);
-            
+
             // Fuzzy search this individual trace's JSON
             const match = fuzzySearch(traceJSON);
-            
+
             if (match) {
               // Normalize fuzzy score (negative to positive)
               const normalizedScore = Math.max(0, Math.min(1, 1 + (match.score / 100)));
-              
+
               // Return the FULL trace object with workspaceId and sessionId added
               results.push({
                 trace: {
@@ -342,7 +376,8 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const sessions = await memoryService.getSessions(options.workspaceId || GLOBAL_WORKSPACE_ID);
+      const sessionsResult = await memoryService.getSessions(options.workspaceId || GLOBAL_WORKSPACE_ID);
+      const sessions = sessionsResult.items;
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
@@ -379,11 +414,11 @@ export class MemorySearchProcessor implements MemorySearchProcessorInterface {
     if (!memoryService) return [];
 
     try {
-      const states = await memoryService.getStates(options.workspaceId || GLOBAL_WORKSPACE_ID, options.sessionId);
+      const statesResult = await memoryService.getStates(options.workspaceId || GLOBAL_WORKSPACE_ID, options.sessionId);
       const queryLower = query.toLowerCase();
       const results: RawMemoryResult[] = [];
 
-      for (const state of states) {
+      for (const state of statesResult.items) {
         let score = 0;
         
         // Check name match

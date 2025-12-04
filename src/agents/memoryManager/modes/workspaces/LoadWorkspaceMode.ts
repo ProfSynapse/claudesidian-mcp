@@ -20,6 +20,7 @@ import {
 import { ProjectWorkspace } from '../../../../database/types/workspace/WorkspaceTypes';
 import { parseWorkspaceContext } from '../../../../utils/contextUtils';
 import { createErrorMessage } from '../../../../utils/errorUtils';
+import { PaginationParams } from '../../../../types/pagination/PaginationTypes';
 
 // Import refactored services
 import { WorkspaceDataFetcher } from '../../services/WorkspaceDataFetcher';
@@ -124,12 +125,26 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
       const keyFiles = this.contextBuilder.extractKeyFiles(workspace);
       const preferences = this.contextBuilder.buildPreferences(workspace);
 
-      // Fetch sessions and states using data fetcher
-      const sessions = await this.dataFetcher.fetchWorkspaceSessions(workspace.id, memoryService);
-      const limitedSessions = sessions.slice(0, limit);
+      // Pagination options for database queries (page 0, pageSize = limit)
+      const paginationOptions: PaginationParams = {
+        page: 0,
+        pageSize: limit
+      };
 
-      const states = await this.dataFetcher.fetchWorkspaceStates(workspace.id, memoryService);
-      const limitedStates = states.slice(0, limit);
+      // Fetch sessions and states using data fetcher with pagination
+      const sessionsResult = await this.dataFetcher.fetchWorkspaceSessions(
+        workspace.id,
+        memoryService,
+        paginationOptions
+      );
+      const limitedSessions = sessionsResult.items;
+
+      const statesResult = await this.dataFetcher.fetchWorkspaceStates(
+        workspace.id,
+        memoryService,
+        paginationOptions
+      );
+      const limitedStates = statesResult.items;
 
       // Fetch agent data using agent resolver
       const app = this.agent.getApp();
@@ -162,6 +177,24 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
           sessions: limitedSessions,
           states: limitedStates,
           ...(agent && { agent: agent })
+        },
+        pagination: {
+          sessions: {
+            page: sessionsResult.page,
+            pageSize: sessionsResult.pageSize,
+            totalItems: sessionsResult.totalItems,
+            totalPages: sessionsResult.totalPages,
+            hasNextPage: sessionsResult.hasNextPage,
+            hasPreviousPage: sessionsResult.hasPreviousPage
+          },
+          states: {
+            page: statesResult.page,
+            pageSize: statesResult.pageSize,
+            totalItems: statesResult.totalItems,
+            totalPages: statesResult.totalPages,
+            hasNextPage: statesResult.hasNextPage,
+            hasPreviousPage: statesResult.hasPreviousPage
+          }
         },
         workspaceContext: workspaceContext
       };
@@ -328,7 +361,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                 },
                 required: ['id', 'name', 'created']
               },
-              description: 'Sessions in this workspace'
+              description: 'Sessions in this workspace (paginated)'
             },
             states: {
               type: 'array',
@@ -363,7 +396,7 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
                 },
                 required: ['id', 'name', 'sessionId', 'created']
               },
-              description: 'States in this workspace'
+              description: 'States in this workspace (paginated)'
             },
             agent: {
               type: 'object',
@@ -385,6 +418,36 @@ export class LoadWorkspaceMode extends BaseMode<LoadWorkspaceParameters, LoadWor
               description: 'Associated workspace agent (if available)'
             }
           }
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            sessions: {
+              type: 'object',
+              properties: {
+                page: { type: 'number', description: 'Current page (0-indexed)' },
+                pageSize: { type: 'number', description: 'Items per page' },
+                totalItems: { type: 'number', description: 'Total sessions in workspace' },
+                totalPages: { type: 'number', description: 'Total pages available' },
+                hasNextPage: { type: 'boolean', description: 'Whether more sessions exist' },
+                hasPreviousPage: { type: 'boolean', description: 'Whether previous page exists' }
+              },
+              description: 'Pagination metadata for sessions'
+            },
+            states: {
+              type: 'object',
+              properties: {
+                page: { type: 'number', description: 'Current page (0-indexed)' },
+                pageSize: { type: 'number', description: 'Items per page' },
+                totalItems: { type: 'number', description: 'Total states in workspace' },
+                totalPages: { type: 'number', description: 'Total pages available' },
+                hasNextPage: { type: 'boolean', description: 'Whether more states exist' },
+                hasPreviousPage: { type: 'boolean', description: 'Whether previous page exists' }
+              },
+              description: 'Pagination metadata for states'
+            }
+          },
+          description: 'Pagination metadata for sessions and states'
         },
         workspaceContext: {
           type: 'object',

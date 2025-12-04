@@ -15,6 +15,7 @@ import { ResultFormatter, ResultFormatterInterface } from '../services/ResultFor
 import { CommonParameters } from '../../../types/mcp/AgentTypes';
 import { MemoryService } from "../../memoryManager/services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../services/WorkspaceService';
+import { IStorageAdapter } from '../../../database/interfaces/IStorageAdapter';
 import { addRecommendations, Recommendation } from '../../../utils/recommendationUtils';
 import { NudgeHelpers } from '../../../utils/nudgeHelpers';
 
@@ -94,11 +95,13 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
   private formatter: ResultFormatterInterface;
   private memoryService?: MemoryService;
   private workspaceService?: WorkspaceService;
+  private storageAdapter?: IStorageAdapter;
 
   constructor(
     plugin: Plugin,
     memoryService?: MemoryService,
     workspaceService?: WorkspaceService,
+    storageAdapter?: IStorageAdapter,
     processor?: MemorySearchProcessorInterface,
     filters?: MemorySearchFiltersInterface,
     formatter?: ResultFormatterInterface
@@ -109,13 +112,15 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       'MEMORY-FOCUSED search with mandatory workspaceId parameter. Search through memory traces, sessions, states, and activities with workspace context and temporal filtering. Requires: query (search terms) and workspaceId (workspace context - defaults to "global-workspace").',
       '2.0.0'
     );
-    
+
     this.plugin = plugin;
     this.memoryService = memoryService;
     this.workspaceService = workspaceService;
-    
+    this.storageAdapter = storageAdapter;
+
     // Initialize services with dependency injection support
-    this.processor = processor || new MemorySearchProcessor(plugin, undefined, workspaceService);
+    // Pass storageAdapter to processor for new backend support
+    this.processor = processor || new MemorySearchProcessor(plugin, undefined, workspaceService, storageAdapter);
     this.filters = filters || new MemorySearchFilters();
     this.formatter = formatter || new ResultFormatter();
   }

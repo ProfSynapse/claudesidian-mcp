@@ -1,60 +1,136 @@
 // Location: src/agents/memoryManager/services/MemoryService.ts
-// Agent-specific memory management service that delegates to WorkspaceService
+// Agent-specific memory management service that delegates to WorkspaceService or IStorageAdapter
 // Used by: MemoryManager agent modes for memory operations
-// Dependencies: WorkspaceService for all data access
+// Dependencies: WorkspaceService (legacy) or IStorageAdapter (new) for all data access
 
 import { Plugin } from 'obsidian';
 import { WorkspaceService } from '../../../services/WorkspaceService';
+import { IStorageAdapter } from '../../../database/interfaces/IStorageAdapter';
 import {
   WorkspaceMemoryTrace,
   WorkspaceSession,
   WorkspaceState
 } from '../../../database/workspace-types';
+import { MemoryTraceData } from '../../../types/storage/HybridStorageTypes';
+import { PaginatedResult, PaginationParams, calculatePaginationMetadata } from '../../../types/pagination/PaginationTypes';
 import { normalizeLegacyTraceMetadata } from '../../../services/memory/LegacyTraceMetadataNormalizer';
 
 /**
  * MemoryService provides agent-specific logic for memory management
- * All data access is delegated to the centralized WorkspaceService
+ * Data access is delegated to either:
+ * - IStorageAdapter (new hybrid JSONL+SQLite backend with pagination)
+ * - WorkspaceService (legacy JSON file backend)
  */
 export class MemoryService {
   constructor(
     private plugin: Plugin,
-    private workspaceService: WorkspaceService
+    private workspaceService: WorkspaceService,
+    private storageAdapter?: IStorageAdapter
   ) {}
 
   /**
    * Get memory traces from a workspace/session
+   * @param workspaceId - Workspace ID
+   * @param sessionId - Optional session ID to filter by
+   * @param options - Optional pagination parameters
+   * @returns Always returns PaginatedResult for consistent API
    */
-  async getMemoryTraces(workspaceId: string, sessionId?: string): Promise<WorkspaceMemoryTrace[]> {
+  async getMemoryTraces(
+    workspaceId: string,
+    sessionId?: string,
+    options?: PaginationParams
+  ): Promise<PaginatedResult<WorkspaceMemoryTrace>> {
+    // Use new storage adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getTraces(workspaceId, sessionId, options);
+
+      // Convert MemoryTraceData to WorkspaceMemoryTrace format
+      const convertedItems = result.items.map(trace => this.convertToLegacyTrace(trace));
+
+      return {
+        ...result,
+        items: convertedItems
+      };
+    }
+
+    // Legacy path: use WorkspaceService
+    let allTraces: WorkspaceMemoryTrace[] = [];
+
     if (sessionId) {
       // Get traces from specific session
       const traces = await this.workspaceService.getMemoryTraces(workspaceId, sessionId);
-      return traces.map(trace => ({
+      allTraces = traces.map(trace => ({
         ...trace,
         workspaceId,
         sessionId
       }));
+    } else {
+      // Get all traces from all sessions in workspace
+      const workspace = await this.workspaceService.getWorkspace(workspaceId);
+
+      if (workspace) {
+        for (const [sid, session] of Object.entries(workspace.sessions)) {
+          const sessionTraces = Object.values(session.memoryTraces).map(trace => ({
+            ...trace,
+            workspaceId,
+            sessionId: sid
+          }));
+          allTraces.push(...sessionTraces);
+        }
+      }
     }
 
-    // Get all traces from all sessions in workspace
-    const workspace = await this.workspaceService.getWorkspace(workspaceId);
+    // Wrap in PaginatedResult for consistent return type
+    return this.wrapInPaginatedResult(allTraces, options);
+  }
 
-    if (!workspace) {
-      return [];
-    }
+  /**
+   * Helper to wrap an array in a PaginatedResult
+   */
+  private wrapInPaginatedResult<T>(items: T[], options?: PaginationParams): PaginatedResult<T> {
+    const page = options?.page ?? 0;
+    const pageSize = options?.pageSize ?? (items.length || 1); // Default to all items
+    const totalItems = items.length;
 
-    const allTraces: WorkspaceMemoryTrace[] = [];
+    // Apply pagination if options provided
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const paginatedItems = options ? items.slice(start, end) : items;
 
-    for (const [sid, session] of Object.entries(workspace.sessions)) {
-      const sessionTraces = Object.values(session.memoryTraces).map(trace => ({
-        ...trace,
-        workspaceId,
-        sessionId: sid
-      }));
-      allTraces.push(...sessionTraces);
-    }
+    return {
+      items: paginatedItems,
+      ...calculatePaginationMetadata(page, pageSize, totalItems)
+    };
+  }
 
-    return allTraces;
+  /**
+   * Helper to convert MemoryTraceData to WorkspaceMemoryTrace format
+   */
+  private convertToLegacyTrace(trace: MemoryTraceData): WorkspaceMemoryTrace {
+    return {
+      id: trace.id,
+      workspaceId: trace.workspaceId,
+      sessionId: trace.sessionId,
+      timestamp: trace.timestamp,
+      type: trace.type || 'generic',
+      content: trace.content,
+      metadata: trace.metadata
+    };
+  }
+
+  /**
+   * Helper to convert WorkspaceMemoryTrace to MemoryTraceData format
+   */
+  private convertFromLegacyTrace(trace: WorkspaceMemoryTrace): MemoryTraceData {
+    return {
+      id: trace.id,
+      workspaceId: trace.workspaceId,
+      sessionId: trace.sessionId || '',
+      timestamp: trace.timestamp,
+      type: trace.type,
+      content: trace.content,
+      metadata: trace.metadata
+    };
   }
 
   /**
@@ -64,6 +140,48 @@ export class MemoryService {
     const workspaceId = trace.workspaceId;
     let sessionId = trace.sessionId || 'default-session';
 
+    // Use new storage adapter if available
+    if (this.storageAdapter) {
+      try {
+        const traceId = await this.storageAdapter.addTrace(workspaceId, sessionId, {
+          timestamp: trace.timestamp || Date.now(),
+          type: trace.type || 'generic',
+          content: trace.content || '',
+          metadata: normalizeLegacyTraceMetadata({
+            workspaceId,
+            sessionId,
+            traceType: trace.type,
+            metadata: trace.metadata
+          })
+        });
+        return traceId;
+      } catch (error) {
+        // If session doesn't exist, try to create it first
+        if ((error as Error).message?.includes('session')) {
+          await this.storageAdapter.createSession(workspaceId, {
+            name: 'Default Session',
+            description: 'Auto-created session',
+            startTime: Date.now(),
+            isActive: true
+          });
+          // Retry adding trace
+          return await this.storageAdapter.addTrace(workspaceId, sessionId, {
+            timestamp: trace.timestamp || Date.now(),
+            type: trace.type || 'generic',
+            content: trace.content || '',
+            metadata: normalizeLegacyTraceMetadata({
+              workspaceId,
+              sessionId,
+              traceType: trace.type,
+              metadata: trace.metadata
+            })
+          });
+        }
+        throw error;
+      }
+    }
+
+    // Legacy path: use WorkspaceService
     // Ensure workspace exists
     const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
@@ -124,18 +242,53 @@ export class MemoryService {
 
   /**
    * Get sessions for a workspace
+   * @param workspaceId - Workspace ID
+   * @param options - Optional pagination parameters
+   * @returns Always returns PaginatedResult for consistent API
    */
-  async getSessions(workspaceId: string): Promise<WorkspaceSession[]> {
+  async getSessions(
+    workspaceId: string,
+    options?: PaginationParams
+  ): Promise<PaginatedResult<WorkspaceSession>> {
+    // Use new storage adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getSessions(workspaceId, options);
+
+      // Convert SessionMetadata to WorkspaceSession format
+      const convertedItems = result.items.map(session => this.convertSessionMetadataToWorkspaceSession(session));
+
+      return {
+        ...result,
+        items: convertedItems
+      };
+    }
+
+    // Legacy path: use WorkspaceService
     const workspace = await this.workspaceService.getWorkspace(workspaceId);
 
     if (!workspace) {
-      return [];
+      return this.wrapInPaginatedResult([], options);
     }
 
-    return Object.values(workspace.sessions).map(session => ({
+    const sessions = Object.values(workspace.sessions).map(session => ({
       ...session,
       workspaceId
     }));
+
+    // Wrap in PaginatedResult for consistent return type
+    return this.wrapInPaginatedResult(sessions, options);
+  }
+
+  /**
+   * Helper to convert SessionMetadata to WorkspaceSession format
+   */
+  private convertSessionMetadataToWorkspaceSession(metadata: any): WorkspaceSession {
+    return {
+      id: metadata.id,
+      workspaceId: metadata.workspaceId,
+      name: metadata.name,
+      description: metadata.description
+    };
   }
 
   /**
@@ -264,41 +417,72 @@ export class MemoryService {
   }
 
   /**
-   * Get all states for a session (or all sessions in workspace if sessionId not provided)
+   * State item type for getStates return
    */
-  async getStates(workspaceId: string, sessionId?: string): Promise<Array<{
+  private static readonly StateItem = {} as {
+    id: string;
+    name: string;
+    created: number;
+    state: WorkspaceState;
+  };
+
+  /**
+   * Get all states for a session (or all sessions in workspace if sessionId not provided)
+   * @param workspaceId - Workspace ID
+   * @param sessionId - Optional session ID to filter by
+   * @param options - Optional pagination parameters
+   * @returns Always returns PaginatedResult for consistent API
+   */
+  async getStates(
+    workspaceId: string,
+    sessionId?: string,
+    options?: PaginationParams
+  ): Promise<PaginatedResult<{
     id: string;
     name: string;
     created: number;
     state: WorkspaceState;
   }>> {
+    type StateItem = { id: string; name: string; created: number; state: WorkspaceState };
+
+    // Use new storage adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getStates(workspaceId, sessionId, options);
+
+      // Convert StateMetadata to legacy format
+      const convertedItems: StateItem[] = result.items.map(stateMeta => ({
+        id: stateMeta.id,
+        name: stateMeta.name,
+        created: stateMeta.created,
+        state: {} as WorkspaceState // Metadata doesn't include full content
+      }));
+
+      return {
+        ...result,
+        items: convertedItems
+      };
+    }
+
+    // Legacy path: use WorkspaceService
     const workspace = await this.workspaceService.getWorkspace(workspaceId);
+    let allStates: StateItem[] = [];
 
-    if (!workspace) {
-      return [];
-    }
-
-    // If sessionId provided, get states for that session only
-    if (sessionId) {
-      if (!workspace.sessions[sessionId]) {
-        return [];
+    if (workspace) {
+      // If sessionId provided, get states for that session only
+      if (sessionId) {
+        if (workspace.sessions[sessionId]) {
+          allStates = Object.values(workspace.sessions[sessionId].states);
+        }
+      } else {
+        // Get all states from all sessions in workspace
+        for (const session of Object.values(workspace.sessions)) {
+          allStates.push(...Object.values(session.states));
+        }
       }
-      return Object.values(workspace.sessions[sessionId].states);
     }
 
-    // Get all states from all sessions in workspace
-    const allStates: Array<{
-      id: string;
-      name: string;
-      created: number;
-      state: WorkspaceState;
-    }> = [];
-
-    for (const session of Object.values(workspace.sessions)) {
-      allStates.push(...Object.values(session.states));
-    }
-
-    return allStates;
+    // Wrap in PaginatedResult for consistent return type
+    return this.wrapInPaginatedResult(allStates, options);
   }
 
   /**

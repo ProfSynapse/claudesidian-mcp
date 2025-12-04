@@ -1,12 +1,15 @@
 // Location: src/services/WorkspaceService.ts
 // Centralized workspace management service with split-file storage
 // Used by: MemoryManager agents, WorkspaceEditModal, UI components
-// Dependencies: FileSystemService, IndexManager for data access
+// Dependencies: FileSystemService, IndexManager for data access (legacy)
+//               IStorageAdapter for new hybrid storage backend
 
 import { Plugin } from 'obsidian';
 import { FileSystemService } from './storage/FileSystemService';
 import { IndexManager } from './storage/IndexManager';
 import { IndividualWorkspace, WorkspaceMetadata, SessionData, MemoryTrace, StateData } from '../types/storage/StorageTypes';
+import { IStorageAdapter } from '../database/interfaces/IStorageAdapter';
+import * as HybridTypes from '../types/storage/HybridStorageTypes';
 
 // Export constant for backward compatibility
 export const GLOBAL_WORKSPACE_ID = 'default';
@@ -15,13 +18,64 @@ export class WorkspaceService {
   constructor(
     private plugin: Plugin,
     private fileSystem: FileSystemService,
-    private indexManager: IndexManager
+    private indexManager: IndexManager,
+    private storageAdapter?: IStorageAdapter
   ) {}
+
+  // ============================================================================
+  // Type Conversion Helpers
+  // ============================================================================
+
+  /**
+   * Convert HybridStorageTypes.WorkspaceMetadata to StorageTypes.WorkspaceMetadata
+   */
+  private convertWorkspaceMetadata(hybrid: HybridTypes.WorkspaceMetadata): WorkspaceMetadata {
+    return {
+      id: hybrid.id,
+      name: hybrid.name,
+      description: hybrid.description,
+      rootFolder: hybrid.rootFolder,
+      created: hybrid.created,
+      lastAccessed: hybrid.lastAccessed,
+      isActive: hybrid.isActive,
+      sessionCount: 0, // Will be calculated if needed
+      traceCount: 0    // Will be calculated if needed
+    };
+  }
+
+  /**
+   * Convert StorageTypes.WorkspaceMetadata to HybridStorageTypes.WorkspaceMetadata
+   */
+  private convertToHybridWorkspaceMetadata(legacy: WorkspaceMetadata): Omit<HybridTypes.WorkspaceMetadata, 'id'> {
+    return {
+      name: legacy.name,
+      description: legacy.description,
+      rootFolder: legacy.rootFolder,
+      created: legacy.created,
+      lastAccessed: legacy.lastAccessed,
+      isActive: legacy.isActive ?? true
+    };
+  }
+
+  // ============================================================================
+  // Public API Methods (dual-backend support)
+  // ============================================================================
 
   /**
    * List workspaces (uses index only - lightweight and fast)
    */
   async listWorkspaces(limit?: number): Promise<WorkspaceMetadata[]> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getWorkspaces({
+        pageSize: limit,
+        sortBy: 'lastAccessed',
+        sortOrder: 'desc'
+      });
+      return result.items.map(w => this.convertWorkspaceMetadata(w));
+    }
+
+    // Fall back to legacy implementation
     const index = await this.indexManager.loadWorkspaceIndex();
 
     let workspaces = Object.values(index.workspaces);
@@ -45,6 +99,17 @@ export class WorkspaceService {
     sortOrder?: 'asc' | 'desc',
     limit?: number
   }): Promise<WorkspaceMetadata[]> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getWorkspaces({
+        pageSize: options?.limit,
+        sortBy: options?.sortBy || 'lastAccessed',
+        sortOrder: options?.sortOrder || 'desc'
+      });
+      return result.items.map(w => this.convertWorkspaceMetadata(w));
+    }
+
+    // Fall back to legacy implementation
     const index = await this.indexManager.loadWorkspaceIndex();
     let workspaces = Object.values(index.workspaces);
 
@@ -82,8 +147,31 @@ export class WorkspaceService {
 
   /**
    * Get full workspace with sessions and traces (loads individual file)
+   * NOTE: When using IStorageAdapter, this only returns metadata.
+   * Use getSessions/getTraces methods separately for full data.
    */
   async getWorkspace(id: string): Promise<IndividualWorkspace | null> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const metadata = await this.storageAdapter.getWorkspace(id);
+      if (!metadata) {
+        return null;
+      }
+
+      // Convert to IndividualWorkspace format (without sessions - those must be fetched separately)
+      return {
+        id: metadata.id,
+        name: metadata.name,
+        description: metadata.description,
+        rootFolder: metadata.rootFolder,
+        created: metadata.created,
+        lastAccessed: metadata.lastAccessed,
+        isActive: metadata.isActive,
+        sessions: {} // Sessions must be loaded separately with getSessions
+      };
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(id);
 
     if (!workspace) {
@@ -127,6 +215,33 @@ export class WorkspaceService {
    * Create new workspace (writes file + updates index)
    */
   async createWorkspace(data: Partial<IndividualWorkspace>): Promise<IndividualWorkspace> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const hybridData: Omit<HybridTypes.WorkspaceMetadata, 'id'> = {
+        name: data.name || 'Untitled Workspace',
+        description: data.description,
+        rootFolder: data.rootFolder || '/',
+        created: data.created || Date.now(),
+        lastAccessed: data.lastAccessed || Date.now(),
+        isActive: data.isActive ?? true
+      };
+
+      const id = await this.storageAdapter.createWorkspace(hybridData);
+
+      return {
+        id,
+        name: hybridData.name,
+        description: hybridData.description,
+        rootFolder: hybridData.rootFolder,
+        created: hybridData.created,
+        lastAccessed: hybridData.lastAccessed,
+        isActive: hybridData.isActive,
+        context: data.context,
+        sessions: {}
+      };
+    }
+
+    // Fall back to legacy implementation
     const id = data.id || `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     const workspace: IndividualWorkspace = {
@@ -154,6 +269,24 @@ export class WorkspaceService {
    * Update workspace (updates file + index metadata)
    */
   async updateWorkspace(id: string, updates: Partial<IndividualWorkspace>): Promise<void> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      // Only update metadata fields that exist in HybridTypes
+      const hybridUpdates: Partial<HybridTypes.WorkspaceMetadata> = {};
+
+      if (updates.name !== undefined) hybridUpdates.name = updates.name;
+      if (updates.description !== undefined) hybridUpdates.description = updates.description;
+      if (updates.rootFolder !== undefined) hybridUpdates.rootFolder = updates.rootFolder;
+      if (updates.isActive !== undefined) hybridUpdates.isActive = updates.isActive;
+
+      // Always update lastAccessed
+      hybridUpdates.lastAccessed = Date.now();
+
+      await this.storageAdapter.updateWorkspace(id, hybridUpdates);
+      return;
+    }
+
+    // Fall back to legacy implementation
     // Load existing workspace
     const workspace = await this.fileSystem.readWorkspace(id);
 
@@ -181,6 +314,13 @@ export class WorkspaceService {
    * Lightweight operation that only updates the timestamp in both file and index
    */
   async updateLastAccessed(id: string): Promise<void> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      await this.storageAdapter.updateWorkspace(id, { lastAccessed: Date.now() });
+      return;
+    }
+
+    // Fall back to legacy implementation
     // Load existing workspace
     const workspace = await this.fileSystem.readWorkspace(id);
 
@@ -202,6 +342,13 @@ export class WorkspaceService {
    * Delete workspace (deletes file + removes from index)
    */
   async deleteWorkspace(id: string): Promise<void> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      await this.storageAdapter.deleteWorkspace(id);
+      return;
+    }
+
+    // Fall back to legacy implementation
     // Delete workspace file
     await this.fileSystem.deleteWorkspace(id);
 
@@ -213,6 +360,34 @@ export class WorkspaceService {
    * Add session to workspace
    */
   async addSession(workspaceId: string, sessionData: Partial<SessionData>): Promise<SessionData> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const hybridSession: Omit<HybridTypes.SessionMetadata, 'id' | 'workspaceId'> = {
+        name: sessionData.name || 'Untitled Session',
+        description: sessionData.description,
+        startTime: sessionData.startTime || Date.now(),
+        endTime: sessionData.endTime,
+        isActive: sessionData.isActive ?? true
+      };
+
+      const sessionId = await this.storageAdapter.createSession(workspaceId, hybridSession);
+
+      // Update workspace lastAccessed
+      await this.storageAdapter.updateWorkspace(workspaceId, { lastAccessed: Date.now() });
+
+      return {
+        id: sessionId,
+        name: hybridSession.name,
+        description: hybridSession.description,
+        startTime: hybridSession.startTime,
+        endTime: hybridSession.endTime,
+        isActive: hybridSession.isActive,
+        memoryTraces: {},
+        states: {}
+      };
+    }
+
+    // Fall back to legacy implementation
     // Load workspace
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
@@ -250,6 +425,20 @@ export class WorkspaceService {
    * Update session in workspace
    */
   async updateSession(workspaceId: string, sessionId: string, updates: Partial<SessionData>): Promise<void> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const hybridUpdates: Partial<HybridTypes.SessionMetadata> = {};
+      if (updates.name !== undefined) hybridUpdates.name = updates.name;
+      if (updates.description !== undefined) hybridUpdates.description = updates.description;
+      if (updates.endTime !== undefined) hybridUpdates.endTime = updates.endTime;
+      if (updates.isActive !== undefined) hybridUpdates.isActive = updates.isActive;
+
+      await this.storageAdapter.updateSession(workspaceId, sessionId, hybridUpdates);
+      await this.storageAdapter.updateWorkspace(workspaceId, { lastAccessed: Date.now() });
+      return;
+    }
+
+    // Fall back to legacy implementation
     // Load workspace
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
@@ -281,6 +470,14 @@ export class WorkspaceService {
    * Delete session from workspace
    */
   async deleteSession(workspaceId: string, sessionId: string): Promise<void> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      await this.storageAdapter.deleteSession(sessionId);
+      await this.storageAdapter.updateWorkspace(workspaceId, { lastAccessed: Date.now() });
+      return;
+    }
+
+    // Fall back to legacy implementation
     // Load workspace
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
@@ -303,6 +500,26 @@ export class WorkspaceService {
    * Get session from workspace
    */
   async getSession(workspaceId: string, sessionId: string): Promise<SessionData | null> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const session = await this.storageAdapter.getSession(sessionId);
+      if (!session) {
+        return null;
+      }
+
+      return {
+        id: session.id,
+        name: session.name,
+        description: session.description,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        isActive: session.isActive,
+        memoryTraces: {}, // Must be loaded separately
+        states: {}        // Must be loaded separately
+      };
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
     if (!workspace) {
@@ -322,6 +539,28 @@ export class WorkspaceService {
    * Add memory trace to session
    */
   async addMemoryTrace(workspaceId: string, sessionId: string, traceData: Partial<MemoryTrace>): Promise<MemoryTrace> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const hybridTrace: Omit<HybridTypes.MemoryTraceData, 'id' | 'workspaceId' | 'sessionId'> = {
+        timestamp: traceData.timestamp || Date.now(),
+        type: traceData.type,
+        content: traceData.content || '',
+        metadata: traceData.metadata
+      };
+
+      const traceId = await this.storageAdapter.addTrace(workspaceId, sessionId, hybridTrace);
+      await this.storageAdapter.updateWorkspace(workspaceId, { lastAccessed: Date.now() });
+
+      return {
+        id: traceId,
+        timestamp: hybridTrace.timestamp,
+        type: hybridTrace.type || 'generic',
+        content: hybridTrace.content,
+        metadata: hybridTrace.metadata as any // Type conversion between different metadata schemas
+      };
+    }
+
+    // Fall back to legacy implementation
     // Load workspace
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
@@ -360,6 +599,19 @@ export class WorkspaceService {
    * Get memory traces from session
    */
   async getMemoryTraces(workspaceId: string, sessionId: string): Promise<MemoryTrace[]> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getTraces(workspaceId, sessionId);
+      return result.items.map(t => ({
+        id: t.id,
+        timestamp: t.timestamp,
+        type: t.type || 'generic',
+        content: t.content,
+        metadata: t.metadata as any // Type conversion between different metadata schemas
+      }));
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
     if (!workspace || !workspace.sessions[sessionId]) {
@@ -373,6 +625,28 @@ export class WorkspaceService {
    * Add state to session
    */
   async addState(workspaceId: string, sessionId: string, stateData: Partial<StateData>): Promise<StateData> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const hybridState: Omit<HybridTypes.StateData, 'id' | 'workspaceId' | 'sessionId'> = {
+        name: stateData.name || 'Untitled State',
+        created: stateData.created || Date.now(),
+        description: undefined,
+        tags: undefined,
+        content: stateData.state || (stateData as any).snapshot || {}
+      };
+
+      const stateId = await this.storageAdapter.saveState(workspaceId, sessionId, hybridState);
+      await this.storageAdapter.updateWorkspace(workspaceId, { lastAccessed: Date.now() });
+
+      return {
+        id: stateId,
+        name: hybridState.name,
+        created: hybridState.created,
+        state: hybridState.content
+      };
+    }
+
+    // Fall back to legacy implementation
     // Load workspace
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
@@ -410,6 +684,22 @@ export class WorkspaceService {
    * Get state from session
    */
   async getState(workspaceId: string, sessionId: string, stateId: string): Promise<StateData | null> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const state = await this.storageAdapter.getState(stateId);
+      if (!state) {
+        return null;
+      }
+
+      return {
+        id: state.id,
+        name: state.name,
+        created: state.created,
+        state: state.content
+      };
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
 
     if (!workspace || !workspace.sessions[sessionId]) {
@@ -424,6 +714,19 @@ export class WorkspaceService {
    * Search workspaces (uses index search data)
    */
   async searchWorkspaces(query: string, limit?: number): Promise<WorkspaceMetadata[]> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      if (!query) {
+        return this.listWorkspaces(limit);
+      }
+
+      const results = await this.storageAdapter.searchWorkspaces(query);
+      const converted = results.map(w => this.convertWorkspaceMetadata(w));
+
+      return limit ? converted.slice(0, limit) : converted;
+    }
+
+    // Fall back to legacy implementation
     if (!query) {
       return this.listWorkspaces(limit);
     }
@@ -461,6 +764,21 @@ export class WorkspaceService {
    * Get workspace by folder (uses index)
    */
   async getWorkspaceByFolder(folder: string): Promise<WorkspaceMetadata | null> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getWorkspaces({
+        filter: { rootFolder: folder },
+        pageSize: 1
+      });
+
+      if (result.items.length === 0) {
+        return null;
+      }
+
+      return this.convertWorkspaceMetadata(result.items[0]);
+    }
+
+    // Fall back to legacy implementation
     const index = await this.indexManager.loadWorkspaceIndex();
     const workspaceId = index.byFolder[folder];
 
@@ -475,6 +793,21 @@ export class WorkspaceService {
    * Get active workspace (uses index)
    */
   async getActiveWorkspace(): Promise<WorkspaceMetadata | null> {
+    // Use new adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getWorkspaces({
+        filter: { isActive: true },
+        pageSize: 1
+      });
+
+      if (result.items.length === 0) {
+        return null;
+      }
+
+      return this.convertWorkspaceMetadata(result.items[0]);
+    }
+
+    // Fall back to legacy implementation
     const index = await this.indexManager.loadWorkspaceIndex();
     const workspaces = Object.values(index.workspaces);
     const active = workspaces.find(ws => ws.isActive);
@@ -495,7 +828,25 @@ export class WorkspaceService {
       return byId;
     }
 
-    // Fall back to name lookup (case-insensitive)
+    // Use new adapter if available for name lookup
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getWorkspaces({
+        search: identifier,
+        pageSize: 100
+      });
+
+      const match = result.items.find(
+        ws => ws.name.toLowerCase() === identifier.toLowerCase()
+      );
+
+      if (!match) {
+        return null;
+      }
+
+      return this.getWorkspace(match.id);
+    }
+
+    // Fall back to legacy implementation
     const index = await this.indexManager.loadWorkspaceIndex();
     const workspaces = Object.values(index.workspaces);
     const matchingWorkspace = workspaces.find(
@@ -523,7 +874,21 @@ export class WorkspaceService {
       return byId;
     }
 
-    // Fall back to name lookup (case-insensitive)
+    // Use new adapter if available for name lookup
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getSessions(workspaceId, { pageSize: 100 });
+      const match = result.items.find(
+        session => session.name?.toLowerCase() === identifier.toLowerCase()
+      );
+
+      if (!match) {
+        return null;
+      }
+
+      return this.getSession(workspaceId, match.id);
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
     if (!workspace) {
       return null;
@@ -550,7 +915,21 @@ export class WorkspaceService {
       return byId;
     }
 
-    // Fall back to name lookup (case-insensitive)
+    // Use new adapter if available for name lookup
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getStates(workspaceId, sessionId, { pageSize: 100 });
+      const match = result.items.find(
+        state => state.name?.toLowerCase() === identifier.toLowerCase()
+      );
+
+      if (!match) {
+        return null;
+      }
+
+      return this.getState(workspaceId, sessionId, match.id);
+    }
+
+    // Fall back to legacy implementation
     const workspace = await this.fileSystem.readWorkspace(workspaceId);
     if (!workspace || !workspace.sessions[sessionId]) {
       return null;

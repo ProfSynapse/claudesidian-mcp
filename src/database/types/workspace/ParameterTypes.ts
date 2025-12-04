@@ -118,6 +118,24 @@ export interface LoadWorkspaceResult extends CommonResult {
       tags?: string[];
     }>;
   };
+  pagination?: {
+    sessions: {
+      page: number;
+      pageSize: number;
+      totalItems: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+    states: {
+      page: number;
+      pageSize: number;
+      totalItems: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+  };
 }
 
 /**

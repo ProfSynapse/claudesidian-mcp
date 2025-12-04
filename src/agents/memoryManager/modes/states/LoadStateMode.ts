@@ -174,7 +174,8 @@ export class LoadStateMode extends BaseMode<LoadStateParams, StateResult> {
             try {
                 const effectiveSessionId = loadedState.sessionId || sessionId;
                 if (effectiveSessionId && effectiveSessionId !== 'current') {
-                    relatedTraces = await memoryService.getMemoryTraces(workspaceId, effectiveSessionId);
+                    const tracesResult = await memoryService.getMemoryTraces(workspaceId, effectiveSessionId);
+                    relatedTraces = tracesResult.items;
                 }
             } catch {
                 // Ignore errors getting traces - not critical for state loading

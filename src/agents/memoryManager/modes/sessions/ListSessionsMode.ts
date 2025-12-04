@@ -10,6 +10,7 @@ import { createErrorMessage } from '../../../../utils/errorUtils';
 import { extractContextFromParams } from '../../../../utils/contextUtils';
 import { MemoryService } from "../../services/MemoryService";
 import { WorkspaceService, GLOBAL_WORKSPACE_ID } from '../../../../services/WorkspaceService';
+import { PaginationParams } from '../../../../types/pagination/PaginationTypes';
 
 /**
  * Mode for listing sessions with filtering and sorting
@@ -32,7 +33,7 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       // Get services from agent
       const memoryService = await this.agent.getMemoryServiceAsync();
       const workspaceService = await this.agent.getWorkspaceServiceAsync();
-      
+
       if (!memoryService) {
         return this.prepareResult(false, undefined, 'Memory service not available');
       }
@@ -43,42 +44,48 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
       if (inheritedContext?.workspaceId) {
         workspaceId = inheritedContext.workspaceId;
       }
-      
+
       // Ensure workspaceId is defined
       const finalWorkspaceId = workspaceId || GLOBAL_WORKSPACE_ID;
 
-      // Get sessions
-      const sessions = await memoryService.getSessions(finalWorkspaceId);
+      // Build pagination options from params
+      const paginationOptions: PaginationParams | undefined = params.limit
+        ? { page: 0, pageSize: params.limit }
+        : undefined;
 
-      // No tag filtering needed since tags are not part of sessions anymore
-      const filteredSessions = sessions;
+      // Get sessions with pagination support
+      const paginatedResult = await memoryService.getSessions(finalWorkspaceId, paginationOptions);
 
-      // Sort sessions
-      const sortedSessions = this.sortSessions(filteredSessions, params.order || 'desc');
-
-      // Apply limit
-      const limitedSessions = params.limit ? sortedSessions.slice(0, params.limit) : sortedSessions;
+      // Sort sessions (in-memory for now, can be moved to DB layer later)
+      const sortedSessions = this.sortSessions(paginatedResult.items, params.order || 'desc');
 
       // Enhance session data with workspace names
-      const enhancedSessions = workspaceService 
-        ? await this.enhanceSessionsWithWorkspaceNames(limitedSessions, workspaceService)
-        : limitedSessions.map(session => ({
+      const enhancedSessions = workspaceService
+        ? await this.enhanceSessionsWithWorkspaceNames(sortedSessions, workspaceService)
+        : sortedSessions.map(session => ({
             ...session,
             workspaceName: 'Unknown Workspace'
           }));
 
       // Prepare result
-      const contextString = workspaceId 
-        ? `Found ${limitedSessions.length} session(s) in workspace ${workspaceId}`
-        : `Found ${limitedSessions.length} session(s) across all workspaces`;
+      const contextString = workspaceId
+        ? `Found ${enhancedSessions.length} of ${paginatedResult.totalItems} session(s) in workspace ${workspaceId}`
+        : `Found ${enhancedSessions.length} of ${paginatedResult.totalItems} session(s) across all workspaces`;
 
       return this.prepareResult(
         true,
         {
           sessions: enhancedSessions,
-          total: sessions.length,
-          filtered: limitedSessions.length,
+          total: paginatedResult.totalItems,
+          filtered: enhancedSessions.length,
           workspaceId: workspaceId,
+          pagination: {
+            page: paginatedResult.page,
+            pageSize: paginatedResult.pageSize,
+            totalPages: paginatedResult.totalPages,
+            hasNextPage: paginatedResult.hasNextPage,
+            hasPreviousPage: paginatedResult.hasPreviousPage
+          },
           filters: {
             order: params.order || 'desc',
             limit: params.limit

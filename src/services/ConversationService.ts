@@ -1,24 +1,47 @@
 // Location: src/services/ConversationService.ts
-// Conversation management service with split-file storage
+// Conversation management service with hybrid storage support
 // Used by: ChatService, ConversationManager, UI components
-// Dependencies: FileSystemService, IndexManager for data access
+// Dependencies: FileSystemService + IndexManager (legacy) OR IStorageAdapter (new)
+//
+// MIGRATION NOTE: This service supports both storage backends:
+// - Legacy: FileSystemService + IndexManager (JSON files + index)
+// - New: IStorageAdapter (JSONL + SQLite hybrid storage)
+// The adapter is prioritized if available, otherwise falls back to legacy.
 
 import { Plugin } from 'obsidian';
 import { FileSystemService } from './storage/FileSystemService';
 import { IndexManager } from './storage/IndexManager';
-import { IndividualConversation, ConversationMetadata } from '../types/storage/StorageTypes';
+import { IndividualConversation, ConversationMetadata as LegacyConversationMetadata } from '../types/storage/StorageTypes';
+import { IStorageAdapter } from '../database/interfaces/IStorageAdapter';
+import { ConversationMetadata, MessageData } from '../types/storage/HybridStorageTypes';
+import { PaginationParams, PaginatedResult, calculatePaginationMetadata } from '../types/pagination/PaginationTypes';
 
 export class ConversationService {
   constructor(
     private plugin: Plugin,
     private fileSystem: FileSystemService,
-    private indexManager: IndexManager
+    private indexManager: IndexManager,
+    private storageAdapter?: IStorageAdapter
   ) {}
 
   /**
    * List conversations (uses index only - lightweight and fast)
    */
-  async listConversations(vaultName?: string, limit?: number): Promise<ConversationMetadata[]> {
+  async listConversations(vaultName?: string, limit?: number): Promise<LegacyConversationMetadata[]> {
+    // Use adapter if available
+    if (this.storageAdapter) {
+      const result = await this.storageAdapter.getConversations({
+        filter: vaultName ? { vaultName } : undefined,
+        pageSize: limit ?? 100,
+        page: 0,
+        sortBy: 'updated',
+        sortOrder: 'desc'
+      });
+      // Convert new format to legacy format
+      return result.items.map(this.convertToLegacyMetadata);
+    }
+
+    // Fall back to legacy storage
     const index = await this.indexManager.loadConversationIndex();
     let conversations = Object.values(index.conversations);
 
@@ -39,9 +62,47 @@ export class ConversationService {
   }
 
   /**
-   * Get full conversation with messages (loads individual file)
+   * Get full conversation with messages (loads individual file or queries from adapter)
+   *
+   * KEY IMPROVEMENT: With adapter, messages are paginated from SQLite instead of loading all
+   *
+   * @param id - Conversation ID
+   * @param paginationOptions - Optional pagination parameters for message loading
+   * @returns Conversation with paginated messages (or all messages if no pagination specified)
    */
-  async getConversation(id: string): Promise<IndividualConversation | null> {
+  async getConversation(
+    id: string,
+    paginationOptions?: PaginationParams
+  ): Promise<IndividualConversation | null> {
+    // Use adapter if available
+    if (this.storageAdapter) {
+      const metadata = await this.storageAdapter.getConversation(id);
+      if (!metadata) {
+        return null;
+      }
+
+      // Apply pagination or load all messages (default: first 1000 for backward compatibility)
+      const messagesResult = await this.storageAdapter.getMessages(id, {
+        page: paginationOptions?.page ?? 0,
+        pageSize: paginationOptions?.pageSize ?? 1000
+      });
+
+      // Convert to legacy format
+      const conversation = this.convertToLegacyConversation(metadata, messagesResult.items);
+
+      // Attach pagination metadata if pagination was requested
+      if (paginationOptions) {
+        // Convert MessageData pagination to ConversationMessage pagination
+        conversation.messagePagination = {
+          ...messagesResult,
+          items: conversation.messages // Already converted by convertToLegacyConversation
+        };
+      }
+
+      return conversation;
+    }
+
+    // Fall back to legacy storage
     const conversation = await this.fileSystem.readConversation(id);
 
     if (!conversation) {
@@ -60,7 +121,100 @@ export class ConversationService {
       });
     }
 
+    // If pagination was requested for legacy storage, slice the messages array
+    if (paginationOptions) {
+      const page = paginationOptions.page ?? 0;
+      const pageSize = paginationOptions.pageSize ?? 50;
+      const totalMessages = conversation.messages.length;
+      const startIndex = page * pageSize;
+      const endIndex = startIndex + pageSize;
+
+      const paginatedMessages = conversation.messages.slice(startIndex, endIndex);
+      const paginationMetadata = calculatePaginationMetadata(page, pageSize, totalMessages);
+
+      // Store original messages count but return paginated subset
+      conversation.messagePagination = {
+        ...paginationMetadata,
+        items: paginatedMessages
+      };
+      conversation.messages = paginatedMessages;
+    }
+
     return conversation;
+  }
+
+  /**
+   * Get messages for a conversation (paginated)
+   *
+   * This method allows fetching messages without loading the full conversation metadata.
+   * Useful for lazy loading messages in UI components.
+   *
+   * @param conversationId - Conversation ID
+   * @param options - Pagination parameters
+   * @returns Paginated result containing messages
+   */
+  async getMessages(
+    conversationId: string,
+    options?: PaginationParams
+  ): Promise<PaginatedResult<any>> {
+    // Use adapter if available
+    if (this.storageAdapter) {
+      const messagesResult = await this.storageAdapter.getMessages(conversationId, {
+        page: options?.page ?? 0,
+        pageSize: options?.pageSize ?? 50
+      });
+
+      // Convert MessageData to legacy message format
+      return {
+        ...messagesResult,
+        items: messagesResult.items.map(msg => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant' | 'tool',
+          content: msg.content || '',
+          timestamp: msg.timestamp,
+          state: msg.state,
+          toolCalls: msg.toolCalls?.map(tc => ({
+            id: tc.id,
+            type: tc.type,
+            name: tc.function.name,
+            function: tc.function,
+            parameters: JSON.parse(tc.function.arguments),
+            result: tc.result,
+            success: tc.success,
+            error: tc.error
+          })),
+          metadata: msg.metadata
+        }))
+      };
+    }
+
+    // Fall back to legacy storage - load full conversation and slice messages
+    const conversation = await this.fileSystem.readConversation(conversationId);
+    if (!conversation) {
+      return {
+        items: [],
+        page: 0,
+        pageSize: options?.pageSize ?? 50,
+        totalItems: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false
+      };
+    }
+
+    const page = options?.page ?? 0;
+    const pageSize = options?.pageSize ?? 50;
+    const totalMessages = conversation.messages.length;
+    const startIndex = page * pageSize;
+    const endIndex = startIndex + pageSize;
+
+    const paginatedMessages = conversation.messages.slice(startIndex, endIndex);
+    const paginationMetadata = calculatePaginationMetadata(page, pageSize, totalMessages);
+
+    return {
+      ...paginationMetadata,
+      items: paginatedMessages
+    };
   }
 
   /**
@@ -81,11 +235,33 @@ export class ConversationService {
   }
 
   /**
-   * Create new conversation (writes file + updates index)
+   * Create new conversation (writes to adapter or legacy storage)
    */
   async createConversation(data: Partial<IndividualConversation>): Promise<IndividualConversation> {
     const id = data.id || `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    // Use adapter if available
+    if (this.storageAdapter) {
+      const conversationId = await this.storageAdapter.createConversation({
+        title: data.title || 'Untitled Conversation',
+        created: data.created ?? Date.now(),
+        updated: data.updated ?? Date.now(),
+        vaultName: data.vault_name || this.plugin.app.vault.getName(),
+        workspaceId: data.metadata?.chatSettings?.workspaceId,
+        sessionId: data.metadata?.chatSettings?.sessionId
+      });
+
+      // Get created conversation
+      const metadata = await this.storageAdapter.getConversation(conversationId);
+      if (!metadata) {
+        throw new Error('Failed to retrieve created conversation');
+      }
+
+      // Convert to legacy format
+      return this.convertToLegacyConversation(metadata, []);
+    }
+
+    // Fall back to legacy storage
     const conversation: IndividualConversation = {
       id,
       title: data.title || 'Untitled Conversation',
@@ -107,9 +283,42 @@ export class ConversationService {
   }
 
   /**
-   * Update conversation (updates file + index metadata)
+   * Update conversation (updates adapter or legacy storage)
    */
   async updateConversation(id: string, updates: Partial<IndividualConversation>): Promise<void> {
+    // Use adapter if available
+    if (this.storageAdapter) {
+      // If messages are provided, persist message-level updates through the adapter
+      if (updates.messages && updates.messages.length > 0) {
+        // Update each message's persisted content/state/reasoning
+        for (const msg of updates.messages) {
+          await this.storageAdapter.updateMessage(id, msg.id, {
+            content: msg.content ?? null,
+            state: msg.state,
+            reasoning: (msg as any).reasoning
+          });
+        }
+
+        // Also bump the conversation's updated timestamp to keep listings fresh
+        await this.storageAdapter.updateConversation(id, {
+          title: updates.title,
+          updated: updates.updated ?? Date.now(),
+          workspaceId: updates.metadata?.chatSettings?.workspaceId,
+          sessionId: updates.metadata?.chatSettings?.sessionId
+        });
+      } else {
+        // Metadata-only update
+        await this.storageAdapter.updateConversation(id, {
+          title: updates.title,
+          updated: updates.updated ?? Date.now(),
+          workspaceId: updates.metadata?.chatSettings?.workspaceId,
+          sessionId: updates.metadata?.chatSettings?.sessionId
+        });
+      }
+      return;
+    }
+
+    // Fall back to legacy storage
     // Load existing conversation
     const conversation = await this.fileSystem.readConversation(id);
 
@@ -134,9 +343,16 @@ export class ConversationService {
   }
 
   /**
-   * Delete conversation (deletes file + removes from index)
+   * Delete conversation (deletes from adapter or legacy storage)
    */
   async deleteConversation(id: string): Promise<void> {
+    // Use adapter if available
+    if (this.storageAdapter) {
+      await this.storageAdapter.deleteConversation(id);
+      return;
+    }
+
+    // Fall back to legacy storage
     // Delete conversation file
     await this.fileSystem.deleteConversation(id);
 
@@ -152,7 +368,9 @@ export class ConversationService {
   }
 
   /**
-   * Add message to conversation (loads file, appends, saves, updates index)
+   * Add message to conversation
+   *
+   * KEY IMPROVEMENT: With adapter, messages are streamed via addMessage() instead of rewriting entire file
    */
   async addMessage(params: {
     conversationId: string;
@@ -167,6 +385,32 @@ export class ConversationService {
     metadata?: any;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
+      // Use adapter if available
+      if (this.storageAdapter) {
+        // Determine initial state based on role and content
+        let initialState: 'draft' | 'complete' = 'complete';
+        if (params.role === 'assistant' && (!params.content || params.content.trim() === '')) {
+          // Empty assistant messages are placeholders for streaming
+          initialState = 'draft';
+        }
+
+        const messageId = await this.storageAdapter.addMessage(params.conversationId, {
+          id: params.id,
+          role: params.role,
+          content: params.content,
+          timestamp: Date.now(),
+          state: initialState,
+          toolCalls: params.toolCalls,
+          metadata: params.metadata
+        });
+
+        return {
+          success: true,
+          messageId
+        };
+      }
+
+      // Fall back to legacy storage
       // Load conversation
       const conversation = await this.fileSystem.readConversation(params.conversationId);
 
@@ -237,13 +481,22 @@ export class ConversationService {
   }
 
   /**
-   * Search conversations (uses index search data)
+   * Search conversations (uses adapter FTS or legacy index)
    */
-  async searchConversations(query: string, limit?: number): Promise<ConversationMetadata[]> {
+  async searchConversations(query: string, limit?: number): Promise<LegacyConversationMetadata[]> {
     if (!query) {
       return this.listConversations(undefined, limit);
     }
 
+    // Use adapter if available
+    if (this.storageAdapter) {
+      const results = await this.storageAdapter.searchConversations(query);
+      // Convert and apply limit
+      const converted = results.map(this.convertToLegacyMetadata);
+      return limit ? converted.slice(0, limit) : converted;
+    }
+
+    // Fall back to legacy storage
     const index = await this.indexManager.loadConversationIndex();
     const words = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
     const matchedIds = new Set<string>();
@@ -276,14 +529,14 @@ export class ConversationService {
   /**
    * Get conversations by vault (uses index)
    */
-  async getConversationsByVault(vaultName: string): Promise<ConversationMetadata[]> {
+  async getConversationsByVault(vaultName: string): Promise<LegacyConversationMetadata[]> {
     return this.listConversations(vaultName);
   }
 
   /**
    * Search conversations by date range (uses index)
    */
-  async searchConversationsByDateRange(startDate: number, endDate: number): Promise<ConversationMetadata[]> {
+  async searchConversationsByDateRange(startDate: number, endDate: number): Promise<LegacyConversationMetadata[]> {
     const index = await this.indexManager.loadConversationIndex();
     const matchedIds = new Set<string>();
 
@@ -307,7 +560,7 @@ export class ConversationService {
   /**
    * Get recent conversations (uses index)
    */
-  async getRecentConversations(limit: number = 10): Promise<ConversationMetadata[]> {
+  async getRecentConversations(limit: number = 10): Promise<LegacyConversationMetadata[]> {
     return this.listConversations(undefined, limit);
   }
 
@@ -355,5 +608,64 @@ export class ConversationService {
     stats.newestConversation = newest === 0 ? undefined : newest;
 
     return stats;
+  }
+
+  // ============================================================================
+  // Type Conversion Helpers (New Format <-> Legacy Format)
+  // ============================================================================
+
+  /**
+   * Convert new ConversationMetadata to legacy format
+   */
+  private convertToLegacyMetadata = (metadata: ConversationMetadata): LegacyConversationMetadata => {
+    return {
+      id: metadata.id,
+      title: metadata.title,
+      created: metadata.created,
+      updated: metadata.updated,
+      vault_name: metadata.vaultName,
+      message_count: metadata.messageCount
+    };
+  };
+
+  /**
+   * Convert new ConversationMetadata + MessageData[] to legacy IndividualConversation
+   */
+  private convertToLegacyConversation(
+    metadata: ConversationMetadata,
+    messages: MessageData[]
+  ): IndividualConversation {
+    return {
+      id: metadata.id,
+      title: metadata.title,
+      created: metadata.created,
+      updated: metadata.updated,
+      vault_name: metadata.vaultName,
+      message_count: metadata.messageCount,
+      messages: messages.map(msg => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant' | 'tool',
+        content: msg.content || '',
+        timestamp: msg.timestamp,
+        state: msg.state,
+        toolCalls: msg.toolCalls?.map(tc => ({
+          id: tc.id,
+          type: tc.type,
+          name: tc.function.name,
+          function: tc.function,
+          parameters: JSON.parse(tc.function.arguments),
+          result: tc.result,
+          success: tc.success,
+          error: tc.error
+        })),
+        metadata: msg.metadata
+      })),
+      metadata: {
+        chatSettings: {
+          workspaceId: metadata.workspaceId,
+          sessionId: metadata.sessionId
+        }
+      }
+    };
   }
 }
