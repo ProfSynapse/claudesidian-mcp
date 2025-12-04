@@ -678,8 +678,8 @@ export class SyncCoordinator {
   private async applyMessageAdded(event: MessageEvent): Promise<void> {
     await this.sqliteCache.run(
       `INSERT OR REPLACE INTO messages
-       (id, conversation_id, role, content, timestamp, state, tool_calls_json, tool_call_id, sequence_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, conversation_id, role, content, timestamp, state, tool_calls_json, tool_call_id, reasoning_content, sequence_number)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         event.data.id,
         event.conversationId,
@@ -689,6 +689,7 @@ export class SyncCoordinator {
         event.data.state ?? 'complete',
         event.data.tool_calls ? JSON.stringify(event.data.tool_calls) : null,
         event.data.tool_call_id ?? null,
+        event.data.reasoning ?? null,
         event.data.sequenceNumber
       ]
     );
@@ -707,6 +708,14 @@ export class SyncCoordinator {
     if (event.data.content !== undefined) { updates.push('content = ?'); values.push(event.data.content); }
     if (event.data.state !== undefined) { updates.push('state = ?'); values.push(event.data.state); }
     if (event.data.reasoning !== undefined) { updates.push('reasoning_content = ?'); values.push(event.data.reasoning); }
+    if (event.data.tool_calls !== undefined) {
+      updates.push('tool_calls_json = ?');
+      values.push(event.data.tool_calls ? JSON.stringify(event.data.tool_calls) : null);
+    }
+    if (event.data.tool_call_id !== undefined) {
+      updates.push('tool_call_id = ?');
+      values.push(event.data.tool_call_id);
+    }
 
     if (updates.length > 0) {
       values.push(event.messageId);

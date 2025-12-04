@@ -25,10 +25,18 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
   readonly baseUrl = 'https://openrouter.ai/api/v1';
   
   mcpConnector?: any;
+  private httpReferer: string;
+  private xTitle: string;
 
-  constructor(apiKey: string, mcpConnector?: any) {
+  constructor(
+    apiKey: string,
+    mcpConnector?: any,
+    options?: { httpReferer?: string; xTitle?: string }
+  ) {
     super(apiKey, 'anthropic/claude-3.5-sonnet');
     this.mcpConnector = mcpConnector;
+    this.httpReferer = options?.httpReferer?.trim() || 'https://synapticlabs.ai';
+    this.xTitle = options?.xTitle?.trim() || BRAND_NAME;
     this.initializeCache();
   }
 
@@ -76,8 +84,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': BRAND_NAME
+          'HTTP-Referer': this.httpReferer,
+          'X-Title': this.xTitle
         },
         body: JSON.stringify(requestBody)
       });
@@ -152,8 +160,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': BRAND_NAME
+          'HTTP-Referer': this.httpReferer,
+          'X-Title': this.xTitle
         },
         body: JSON.stringify(requestBody)
       });
@@ -247,19 +255,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           for (const choice of parsed.choices || []) {
             let toolCalls = choice?.delta?.tool_calls || choice?.delta?.toolCalls;
             if (toolCalls) {
-              // DEBUG: Dump full structure to find where thought_signature is
-              console.log('[OpenRouter DEBUG] Full parsed structure with tool_calls:', {
-                parsed_keys: Object.keys(parsed),
-                choice_keys: Object.keys(choice),
-                delta_keys: choice?.delta ? Object.keys(choice.delta) : 'no delta',
-                toolCall_0_keys: toolCalls[0] ? Object.keys(toolCalls[0]) : 'no tc',
-                toolCall_0_full: JSON.stringify(toolCalls[0]).substring(0, 300),
-                choice_delta_full: JSON.stringify(choice?.delta).substring(0, 500),
-                parsed_extra_content: parsed.extra_content,
-                choice_extra_content: choice.extra_content,
-                delta_extra_content: choice?.delta?.extra_content
-              });
-
               // Extract reasoning_details from this chunk (it may contain encrypted thought signatures)
               const chunkReasoningDetails = choice?.delta?.reasoning_details;
               if (chunkReasoningDetails && Array.isArray(chunkReasoningDetails)) {
@@ -310,13 +305,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
                     thought_signature: capturedThoughtSignature
                   }
                 );
-                console.log('[OpenRouter:2] ✅ Attached reasoning to tool calls:', {
-                  hasReasoningDetails: !!capturedReasoning,
-                  hasThoughtSignature: !!capturedThoughtSignature,
-                  toolCallsHaveThoughtSig: toolCalls.some((tc: any) => tc.thought_signature)
-                });
-              } else {
-                console.log('[OpenRouter:2] ⚠️ No reasoning data to attach to tool calls');
               }
               return toolCalls;
             }
@@ -328,19 +316,6 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           // Extract finish reason from any choice
           for (const choice of parsed.choices || []) {
             if (choice?.finish_reason) {
-              // DEBUG: Check final chunk for thought_signature
-              console.log('[OpenRouter DEBUG] Final chunk with finish_reason:', {
-                finish_reason: choice.finish_reason,
-                parsed_keys: Object.keys(parsed),
-                choice_keys: Object.keys(choice),
-                delta_keys: choice?.delta ? Object.keys(choice.delta) : 'no delta',
-                message_keys: choice?.message ? Object.keys(choice.message) : 'no message',
-                parsed_thought_signature: parsed.thought_signature,
-                choice_thought_signature: choice.thought_signature,
-                delta_thought_signature: choice?.delta?.thought_signature,
-                extra_content: parsed.extra_content || choice.extra_content || choice?.delta?.extra_content
-              });
-
               // Last chance to capture thought_signature from final chunk
               if (needsReasoning && !capturedThoughtSignature) {
                 const delta = choice?.delta;
@@ -429,14 +404,28 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
     onUsageAvailable: (usage: any, cost?: any) => void
   ): Promise<void> {
     try {
-      const usage = await this.fetchGenerationStats(generationId);
+      const stats = await this.fetchGenerationStats(generationId);
 
-      if (!usage) {
+      if (!stats) {
         return;
       }
 
-      // Calculate cost
-      const cost = await this.calculateCost(usage, model);
+      const usage = {
+        promptTokens: stats.promptTokens,
+        completionTokens: stats.completionTokens,
+        totalTokens: stats.totalTokens
+      };
+
+      // Calculate cost - prefer provider total_cost when present, otherwise fall back to pricing calculation
+      let cost;
+      if (stats.totalCost !== undefined) {
+        cost = {
+          totalCost: stats.totalCost,
+          currency: stats.currency || 'USD'
+        };
+      } else {
+        cost = await this.calculateCost(usage, model);
+      }
 
       // Notify via callback
       onUsageAvailable(usage, cost || undefined);
@@ -450,10 +439,18 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
    * Fetch generation statistics from OpenRouter using generation ID with exponential backoff
    * This is the proper way to get token usage and cost for streaming requests
    */
-  private async fetchGenerationStats(generationId: string): Promise<{ promptTokens: number; completionTokens: number; totalTokens: number } | null> {
-    const maxRetries = 5;
-    const baseDelay = 800; // Start with 800ms (stats typically ready after ~800ms)
-    const incrementDelay = 200; // Increment by 200ms each retry
+  private async fetchGenerationStats(generationId: string): Promise<{
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    totalCost?: number;
+    currency?: string;
+  } | null> {
+    // OpenRouter stats can lag ~3-6s; extend retries to reduce 404 noise
+    const maxRetries = 12;
+    const baseDelay = 900; // Start near 1s
+    const incrementDelay = 500; // Grow more aggressively
+    let lastStatus: number | null = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -467,10 +464,12 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
-            'HTTP-Referer': 'https://www.synapticlabs.ai',
-            'X-Title': BRAND_NAME
+            'HTTP-Referer': this.httpReferer,
+            'X-Title': this.xTitle
           }
         });
+
+        lastStatus = response.status;
 
         if (response.status === 404) {
           // Stats not ready yet, retry
@@ -478,6 +477,11 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         }
 
         if (!response.ok) {
+          console.warn('[OpenRouter] generation stats fetch non-OK response', {
+            generationId,
+            status: response.status,
+            statusText: response.statusText
+          });
           return null;
         }
 
@@ -487,20 +491,44 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         // OpenRouter returns: tokens_prompt, tokens_completion, native_tokens_prompt, native_tokens_completion
         const promptTokens = data.data?.native_tokens_prompt || data.data?.tokens_prompt || 0;
         const completionTokens = data.data?.native_tokens_completion || data.data?.tokens_completion || 0;
+        const totalCost = data.data?.total_cost ?? undefined;
+        const currency = 'USD';
 
         if (promptTokens > 0 || completionTokens > 0) {
+          console.log('[OpenRouter] generation stats fetched', {
+            generationId,
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+            finishReason: data.data?.native_finish_reason || data.data?.finish_reason,
+            totalCost
+          });
           return {
             promptTokens,
             completionTokens,
-            totalTokens: promptTokens + completionTokens
+            totalTokens: promptTokens + completionTokens,
+            totalCost,
+            currency
           };
         }
 
         // Data returned but no tokens - might not be ready yet
       } catch (error) {
         if (attempt === maxRetries - 1) {
+          console.warn('[OpenRouter] Failed to fetch generation stats after retries:', {
+            generationId,
+            lastStatus,
+            error: error instanceof Error ? error.message : String(error)
+          });
           return null;
         }
+        console.warn('[OpenRouter] generation stats fetch error, will retry', {
+          generationId,
+          attempt: attempt + 1,
+          maxRetries,
+          lastStatus,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
     }
 
@@ -601,8 +629,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
             headers: {
               ...this.buildHeaders(),
               'Authorization': `Bearer ${this.apiKey}`,
-              'HTTP-Referer': 'https://www.synapticlabs.ai',
-              'X-Title': BRAND_NAME
+              'HTTP-Referer': this.httpReferer,
+              'X-Title': this.xTitle
             },
             body: JSON.stringify(requestBody)
           });
@@ -721,8 +749,8 @@ export class OpenRouterAdapter extends BaseAdapter implements MCPCapableAdapter 
         headers: {
           ...this.buildHeaders(),
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': 'https://www.synapticlabs.ai',
-          'X-Title': BRAND_NAME
+          'HTTP-Referer': this.httpReferer,
+          'X-Title': this.xTitle
         },
         body: JSON.stringify(requestBody)
       });

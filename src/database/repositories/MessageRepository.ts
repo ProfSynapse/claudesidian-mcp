@@ -184,11 +184,15 @@ export class MessageRepository
             content: data.content,
             tool_calls: data.toolCalls?.map(tc => ({
               id: tc.id,
-              type: 'function' as const,
-              function: {
-                name: tc.function.name,
-                arguments: tc.function.arguments
-              }
+              type: (tc as any).type || 'function',
+              function: tc.function,
+              // Persist extras so tool bubbles can be reconstructed after reload
+              name: (tc as any).name,
+              parameters: (tc as any).parameters,
+              result: (tc as any).result,
+              success: (tc as any).success,
+              error: (tc as any).error,
+              executionTime: (tc as any).executionTime
             })),
             tool_call_id: data.toolCallId,
             state: data.state,
@@ -196,6 +200,16 @@ export class MessageRepository
           }
         } as any
       );
+
+      if (data.toolCalls?.length || data.reasoning) {
+        console.log('[TOOL_SAVED]', {
+          conversationId,
+          messageId: id,
+          stage: 'add',
+          toolCallCount: data.toolCalls?.length || 0,
+          hasReasoning: !!data.reasoning
+        });
+      }
 
       // 2. Update SQLite cache
       await this.sqliteCache.run(
@@ -254,14 +268,20 @@ export class MessageRepository
             content: data.content ?? undefined,
             state: data.state,
             reasoning: data.reasoning,
-            tool_calls: data.toolCalls?.map(tc => ({
-              id: tc.id,
-              type: 'function' as const,
-              function: {
-                name: tc.function.name,
-                arguments: tc.function.arguments
-              }
-            })),
+            // Persist full tool call data including results so tool bubbles can be reconstructed
+            tool_calls: data.toolCalls?.map(tc => {
+              const anyTc: any = tc as any;
+              return {
+                id: tc.id,
+                type: anyTc.type || 'function',
+                function: tc.function,
+                name: anyTc.name,
+                parameters: anyTc.parameters,
+                result: anyTc.result,
+                success: anyTc.success,
+                error: anyTc.error
+              };
+            }),
             tool_call_id: data.toolCallId ?? undefined
           }
         } as any
@@ -298,6 +318,15 @@ export class MessageRepository
           `UPDATE ${this.tableName} SET ${setClauses.join(', ')} WHERE id = ?`,
           params
         );
+      }
+
+      if ((data.toolCalls && data.toolCalls.length > 0) || data.reasoning !== undefined) {
+        console.log('[TOOL_SAVED]', {
+          messageId,
+          stage: 'update',
+          toolCallCount: data.toolCalls?.length || 0,
+          hasReasoning: data.reasoning !== undefined
+        });
       }
 
       // 3. Invalidate cache

@@ -177,15 +177,22 @@ export class StreamingResponseService {
         if (chunk.toolCalls) {
           toolCalls = chunk.toolCalls;
 
-          // Handle progressive tool call detection (fires 'detected' and 'updated' events)
-          if (toolCalls) {
-            this.dependencies.toolCallService.handleToolCallDetection(
-              messageId,
-              toolCalls,
-              chunk.toolCallsReady || false,
-              conversationId
-            );
-          }
+      // Handle progressive tool call detection (fires 'detected' and 'updated' events)
+      if (toolCalls) {
+        // Only emit once we have non-empty argument content to reduce duplicate spam
+        const hasMeaningfulArgs = toolCalls.some((tc: any) => {
+          const args = tc.function?.arguments || tc.arguments || '';
+          return typeof args === 'string' ? args.trim().length > 0 : true;
+        });
+        if (hasMeaningfulArgs) {
+          this.dependencies.toolCallService.handleToolCallDetection(
+            messageId,
+            toolCalls,
+            chunk.toolCallsReady || false,
+            conversationId
+          );
+        }
+      }
         }
 
         // Save to database BEFORE yielding final chunk to ensure persistence
@@ -212,6 +219,16 @@ export class StreamingResponseService {
               // Update existing placeholder message
               msg.content = accumulatedContent;
               msg.state = 'complete';
+              if (toolCalls) {
+                msg.toolCalls = toolCalls;
+                console.log('[TOOL_SAVED]', {
+                  messageId,
+                  conversationId,
+                  stage: 'stream_finalize',
+                  toolCallCount: toolCalls.length,
+                  hasReasoning: !!msg.reasoning
+                });
+              }
 
               // Only update cost/usage if we have values (don't overwrite with undefined)
               // This prevents overwriting async updates from OpenRouter's generation API

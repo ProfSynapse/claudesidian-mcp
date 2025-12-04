@@ -87,6 +87,16 @@ export class ConversationService {
         pageSize: paginationOptions?.pageSize ?? 1000
       });
 
+      const toolCallCount = messagesResult.items.reduce((acc, msg) => acc + (msg.toolCalls?.length || 0), 0);
+      if (toolCallCount > 0) {
+        console.log('[TOOL_RETRIEVED]', {
+          conversationId: id,
+          stage: 'ConversationService.getConversation',
+          messages: messagesResult.items.length,
+          toolCallCount
+        });
+      }
+
       // Convert to legacy format
       const conversation = this.convertToLegacyConversation(metadata, messagesResult.items);
 
@@ -183,6 +193,7 @@ export class ConversationService {
             success: tc.success,
             error: tc.error
           })),
+          reasoning: msg.reasoning,
           metadata: msg.metadata
         }))
       };
@@ -288,6 +299,21 @@ export class ConversationService {
   async updateConversation(id: string, updates: Partial<IndividualConversation>): Promise<void> {
     // Use adapter if available
     if (this.storageAdapter) {
+      // Merge existing metadata so we don't lose chat settings when only cost is updated
+      const existing = await this.storageAdapter.getConversation(id);
+      const existingMetadata = existing?.metadata || {};
+
+      const mergedMetadata = {
+        ...existingMetadata,
+        chatSettings: {
+          ...(existingMetadata.chatSettings || {}),
+          ...(updates.metadata?.chatSettings || {}),
+          workspaceId: updates.metadata?.chatSettings?.workspaceId ?? existingMetadata.chatSettings?.workspaceId,
+          sessionId: updates.metadata?.chatSettings?.sessionId ?? existingMetadata.chatSettings?.sessionId
+        },
+        cost: updates.cost || existingMetadata.cost
+      };
+
       // If messages are provided, persist message-level updates through the adapter
       if (updates.messages && updates.messages.length > 0) {
         // Update each message's persisted content/state/reasoning
@@ -319,7 +345,8 @@ export class ConversationService {
           title: updates.title,
           updated: updates.updated ?? Date.now(),
           workspaceId: updates.metadata?.chatSettings?.workspaceId,
-          sessionId: updates.metadata?.chatSettings?.sessionId
+          sessionId: updates.metadata?.chatSettings?.sessionId,
+          metadata: mergedMetadata
         });
       } else {
         // Metadata-only update
@@ -327,7 +354,8 @@ export class ConversationService {
           title: updates.title,
           updated: updates.updated ?? Date.now(),
           workspaceId: updates.metadata?.chatSettings?.workspaceId,
-          sessionId: updates.metadata?.chatSettings?.sessionId
+          sessionId: updates.metadata?.chatSettings?.sessionId,
+          metadata: mergedMetadata
         });
       }
       return;
@@ -650,6 +678,8 @@ export class ConversationService {
     metadata: ConversationMetadata,
     messages: MessageData[]
   ): IndividualConversation {
+    const meta = metadata.metadata || {};
+    const resolvedCost = meta.cost || (meta.totalCost !== undefined ? { totalCost: meta.totalCost, currency: meta.currency || 'USD' } : undefined);
     return {
       id: metadata.id,
       title: metadata.title,
@@ -673,14 +703,17 @@ export class ConversationService {
           success: tc.success,
           error: tc.error
         })),
+        reasoning: msg.reasoning,
         metadata: msg.metadata
       })),
       metadata: {
         chatSettings: {
           workspaceId: metadata.workspaceId,
           sessionId: metadata.sessionId
-        }
-      }
+        },
+        cost: resolvedCost
+      },
+      cost: resolvedCost
     };
   }
 }

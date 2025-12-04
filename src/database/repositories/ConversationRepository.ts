@@ -96,10 +96,7 @@ export class ConversationRepository
         filters.push('vault_name = ?');
         params.push(options.filter.vaultName);
       }
-      if (options.filter.workspaceId) {
-        filters.push('workspace_id = ?');
-        params.push(options.filter.workspaceId);
-      }
+      // Note: workspaceId filter not supported - column not in schema
       if (filters.length > 0) {
         whereClause = `WHERE ${filters.join(' AND ')}`;
       }
@@ -192,8 +189,8 @@ export class ConversationRepository
 
       // 2. Update SQLite cache
       await this.sqliteCache.run(
-        `INSERT INTO ${this.tableName} (id, title, created, updated, vault_name, message_count, workspace_id, session_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ${this.tableName} (id, title, created, updated, vault_name, message_count, metadata_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           data.title,
@@ -201,8 +198,7 @@ export class ConversationRepository
           data.updated ?? now,
           data.vaultName,
           0,
-          data.workspaceId ?? null,
-          data.sessionId ?? null
+          data.metadata ? JSON.stringify(data.metadata) : null
         ]
       );
 
@@ -230,7 +226,8 @@ export class ConversationRepository
           conversationId: id,
           data: {
             title: data.title,
-            updated: data.updated ?? Date.now()
+            updated: data.updated ?? Date.now(),
+            settings: data.metadata
           }
         } as any
       );
@@ -243,13 +240,11 @@ export class ConversationRepository
         setClauses.push('title = ?');
         params.push(data.title);
       }
-      if (data.workspaceId !== undefined) {
-        setClauses.push('workspace_id = ?');
-        params.push(data.workspaceId);
-      }
-      if (data.sessionId !== undefined) {
-        setClauses.push('session_id = ?');
-        params.push(data.sessionId);
+      // Note: workspaceId and sessionId are not in SQLite schema
+      // They are stored in metadata_json if needed
+      if (data.metadata !== undefined) {
+        setClauses.push('metadata_json = ?');
+        params.push(data.metadata ? JSON.stringify(data.metadata) : null);
       }
 
       // Always update timestamp
@@ -334,6 +329,7 @@ export class ConversationRepository
    * Convert SQLite row to ConversationMetadata
    */
   private rowToConversation(row: any): ConversationMetadata {
+    const metadata = row.metadata_json ? JSON.parse(row.metadata_json) : undefined;
     return {
       id: row.id,
       title: row.title,
@@ -341,8 +337,10 @@ export class ConversationRepository
       updated: row.updated,
       vaultName: row.vault_name,
       messageCount: row.message_count,
-      workspaceId: row.workspace_id ?? undefined,
-      sessionId: row.session_id ?? undefined
+      // workspaceId and sessionId stored in metadata if needed
+      workspaceId: metadata?.workspaceId,
+      sessionId: metadata?.sessionId,
+      metadata
     };
   }
 }

@@ -19,6 +19,10 @@ export interface IndividualConversation {
   vault_name: string;
   message_count: number;
   messages: ConversationMessage[];
+  cost?: {
+    totalCost: number;
+    currency: string;
+  };
   metadata?: {
     chatSettings?: {
       providerId?: string;
@@ -28,7 +32,11 @@ export interface IndividualConversation {
       contextNotes?: string[];
       sessionId?: string;
     };
-    // Conversation-level cost aggregation
+    // Conversation-level cost aggregation (legacy)
+    cost?: {
+      totalCost: number;
+      currency: string;
+    };
     totalCost?: number;
     totalTokens?: number;
     currency?: string;

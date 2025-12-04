@@ -22,6 +22,9 @@ export interface LLMProviderConfig {
   ollamaModel?: string; // For Ollama: user-configured model name
   lastValidated?: number; // Unix timestamp (ms) of last successful validation
   validationHash?: string; // First 16 chars of SHA256 hash of validated API key
+  // OpenRouter-specific headers (optional, but recommended for production)
+  httpReferer?: string;
+  xTitle?: string;
   // WebLLM-specific settings
   webllmModel?: string; // Selected WebLLM model (e.g., 'nexus-tools-q4f16')
   webllmQuantization?: 'q4f16' | 'q5f16' | 'q8f16'; // Quantization level
@@ -73,7 +76,9 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LLMProviderSettings = {
     },
     openrouter: {
       apiKey: '',
-      enabled: false
+      enabled: false,
+      httpReferer: '',
+      xTitle: ''
     },
     requesty: {
       apiKey: '',

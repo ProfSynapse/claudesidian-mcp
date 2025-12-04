@@ -195,6 +195,9 @@ export interface ConversationMetadata {
 
   /** Optional session association */
   sessionId?: string;
+
+  /** Optional additional metadata (stored as JSON) */
+  metadata?: Record<string, any>;
 }
 
 /**

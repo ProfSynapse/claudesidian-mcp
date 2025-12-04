@@ -307,7 +307,7 @@ export class LLMValidationService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://www.synapticlabs.ai',
+          'HTTP-Referer': 'https://synapticlabs.ai',
           'X-Title': BRAND_NAME
         },
         body: JSON.stringify(requestBody)

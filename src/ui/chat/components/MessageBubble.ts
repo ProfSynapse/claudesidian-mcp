@@ -55,6 +55,16 @@ export class MessageBubble extends Component {
     const activeContent = this.getActiveMessageContent(this.message);
 
     if (showToolBubble) {
+      console.log('[TOOL_RENDER]', {
+        messageId: this.message.id,
+        stage: 'MessageBubble.createElement',
+        hasToolCalls,
+        toolCallCount: activeToolCalls ? activeToolCalls.length : 0,
+        hasReasoning
+      });
+    }
+
+    if (showToolBubble) {
       const wrapper = document.createElement('div');
       wrapper.addClass('message-group');
       wrapper.setAttribute('data-message-id', this.message.id);

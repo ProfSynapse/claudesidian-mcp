@@ -491,13 +491,33 @@ export class ChatView extends ItemView {
 
   private getConversationCost(): { totalCost: number; currency: string } | null {
     const conversation = this.conversationManager.getCurrentConversation();
-    if (!conversation?.metadata?.totalCost) {
-      return null;
+    if (!conversation) return null;
+
+    // Prefer structured cost field if present
+    const cost = (conversation as any).cost;
+    if (cost?.totalCost !== undefined) {
+      return {
+        totalCost: cost.totalCost,
+        currency: cost.currency || 'USD'
+      };
     }
-    return {
-      totalCost: conversation.metadata.totalCost,
-      currency: conversation.metadata.currency || 'USD'
-    };
+
+    // Fallback to metadata (legacy)
+    if (conversation.metadata?.cost?.totalCost !== undefined) {
+      return {
+        totalCost: conversation.metadata.cost.totalCost,
+        currency: conversation.metadata.cost.currency || 'USD'
+      };
+    }
+
+    if (conversation.metadata?.totalCost !== undefined) {
+      return {
+        totalCost: conversation.metadata.totalCost,
+        currency: conversation.metadata.currency || 'USD'
+      };
+    }
+
+    return null;
   }
 
   private async updateContextProgress(): Promise<void> {

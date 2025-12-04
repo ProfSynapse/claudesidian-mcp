@@ -297,6 +297,8 @@ export interface MessageEvent extends BaseStorageEvent {
     tool_call_id?: string;
     /** Message lifecycle state */
     state?: string;
+    /** Reasoning/thinking content (for extended thinking models) */
+    reasoning?: string;
     /** Sequence number for ordering */
     sequenceNumber: number;
   };

@@ -160,7 +160,14 @@ export class AdapterRegistry implements IAdapterRegistry {
       (config) => new OpenAIAdapter(config.apiKey, this.mcpConnector));
 
     this.initializeProvider('openrouter', providers.openrouter,
-      (config) => new OpenRouterAdapter(config.apiKey, this.mcpConnector));
+      (config) => new OpenRouterAdapter(
+        config.apiKey,
+        this.mcpConnector,
+        {
+          httpReferer: config.httpReferer,
+          xTitle: config.xTitle
+        }
+      ));
 
     this.initializeProvider('anthropic', providers.anthropic,
       (config) => new AnthropicAdapter(config.apiKey, this.mcpConnector));
