@@ -140,6 +140,7 @@ export class StreamingResponseService {
         abortSignal: options?.abortSignal,
         sessionId: options?.sessionId,
         workspaceId: options?.workspaceId,
+        conversationId, // CRITICAL: Required for OpenAI Responses API response ID tracking
         enableThinking: options?.enableThinking,
         thinkingEffort: options?.thinkingEffort
       };

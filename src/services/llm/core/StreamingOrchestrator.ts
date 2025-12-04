@@ -27,6 +27,7 @@ export interface StreamingOptions {
   onUsageAvailable?: (usage: any, cost?: any) => void;
   sessionId?: string;
   workspaceId?: string;
+  conversationId?: string; // Required for OpenAI Responses API response ID tracking
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -256,9 +257,9 @@ export class StreamingOrchestrator {
         }
 
         if (chunk.complete) {
-          // Store OpenAI response ID for future continuations
-          if (provider === 'openai' && chunk.metadata?.responseId && options?.sessionId) {
-            this.conversationResponseIds.set(options.sessionId, chunk.metadata.responseId);
+          // Store OpenAI response ID for future continuations (uses conversationId, NOT sessionId)
+          if (provider === 'openai' && chunk.metadata?.responseId && options?.conversationId) {
+            this.conversationResponseIds.set(options.conversationId, chunk.metadata.responseId);
           }
           break;
         }
@@ -429,9 +430,9 @@ export class StreamingOrchestrator {
             continue;
           }
 
-          // Update response ID BEFORE recursive call (OpenAI only)
-          if (provider === 'openai' && chunk.metadata?.responseId && options?.sessionId) {
-            this.conversationResponseIds.set(options.sessionId, chunk.metadata.responseId);
+          // Update response ID BEFORE recursive call (OpenAI only - uses conversationId)
+          if (provider === 'openai' && chunk.metadata?.responseId && options?.conversationId) {
+            this.conversationResponseIds.set(options.conversationId, chunk.metadata.responseId);
           }
 
           // Check iteration limit before recursing
@@ -618,9 +619,9 @@ export class StreamingOrchestrator {
         }
 
         if (recursiveChunk.complete) {
-          // Update response ID for next continuation (OpenAI only)
-          if (provider === 'openai' && recursiveChunk.metadata?.responseId && options?.sessionId) {
-            this.conversationResponseIds.set(options.sessionId, recursiveChunk.metadata.responseId);
+          // Update response ID for next continuation (OpenAI only - uses conversationId)
+          if (provider === 'openai' && recursiveChunk.metadata?.responseId && options?.conversationId) {
+            this.conversationResponseIds.set(options.conversationId, recursiveChunk.metadata.responseId);
           }
           break;
         }
@@ -734,10 +735,10 @@ export class StreamingOrchestrator {
         toolResults
       );
 
-      // Get previous response ID for this conversation
-      const conversationId = options?.sessionId;
-      const previousResponseId = conversationId
-        ? this.conversationResponseIds.get(conversationId)
+      // Get previous response ID for this conversation (uses conversationId, NOT sessionId)
+      const convId = options?.conversationId;
+      const previousResponseId = convId
+        ? this.conversationResponseIds.get(convId)
         : undefined;
 
       return {
