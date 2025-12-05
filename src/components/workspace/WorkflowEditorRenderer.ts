@@ -1,4 +1,4 @@
-import { Setting } from 'obsidian';
+import { Setting, ButtonComponent } from 'obsidian';
 
 /**
  * Workflow data structure
@@ -44,26 +44,19 @@ export class WorkflowEditorRenderer {
     this.isNewWorkflow = isNew;
 
     // Header with back button
-    const header = container.createDiv('workflow-edit-header');
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.marginBottom = '20px';
+    const header = container.createDiv('nexus-workflow-header');
 
-    const backButton = header.createEl('button', {
-      text: '← Back to Workspace',
-      cls: 'workflow-back-button'
-    });
-    backButton.addEventListener('click', () => this.onCancel());
+    new ButtonComponent(header)
+      .setButtonText('← Back to Workspace')
+      .onClick(() => this.onCancel());
 
     header.createEl('h2', {
       text: isNew ? 'Create Workflow' : 'Edit Workflow',
-      cls: 'workflow-edit-title'
+      cls: 'nexus-workflow-title'
     });
 
     // Workflow form
-    const form = container.createDiv('workflow-edit-form');
-    form.style.maxWidth = '600px';
-    form.style.margin = '0 auto';
+    const form = container.createDiv('nexus-workflow-form');
 
     // Workflow Name
     new Setting(form)
@@ -99,22 +92,16 @@ export class WorkflowEditorRenderer {
         }));
 
     // Action buttons
-    const actionsContainer = container.createDiv('workflow-edit-actions');
-    actionsContainer.style.display = 'flex';
-    actionsContainer.style.justifyContent = 'center';
-    actionsContainer.style.gap = '12px';
-    actionsContainer.style.marginTop = '30px';
+    const actionsContainer = container.createDiv('nexus-form-actions');
 
-    const saveButton = actionsContainer.createEl('button', {
-      text: 'Save Workflow',
-      cls: 'mod-cta'
-    });
-    saveButton.addEventListener('click', () => this.handleSave());
+    new ButtonComponent(actionsContainer)
+      .setButtonText('Save Workflow')
+      .setCta()
+      .onClick(() => this.handleSave());
 
-    const cancelButton = actionsContainer.createEl('button', {
-      text: 'Cancel'
-    });
-    cancelButton.addEventListener('click', () => this.onCancel());
+    new ButtonComponent(actionsContainer)
+      .setButtonText('Cancel')
+      .onClick(() => this.onCancel());
   }
 
   /**

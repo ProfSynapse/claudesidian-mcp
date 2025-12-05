@@ -55,7 +55,6 @@ export class ProvidersTab {
 
     // UI References
     private thinkingContainer?: HTMLElement;
-    private effortValueEl?: HTMLElement;
 
     // Provider configurations
     private readonly providerConfigs: Record<string, ProviderDisplayConfig> = {
@@ -329,7 +328,7 @@ export class ProvidersTab {
     }
 
     /**
-     * Render thinking settings section
+     * Render thinking settings section - compact inline layout
      */
     private renderThinkingSection(container: HTMLElement, settings: LLMProviderSettings): void {
         this.thinkingContainer = container.createDiv('nexus-thinking-section');
@@ -347,17 +346,16 @@ export class ProvidersTab {
             settings.defaultThinking = { enabled: false, effort: 'medium' };
         }
 
-        // Section header
-        this.thinkingContainer.createEl('h4', { text: 'Default Thinking Mode' });
-        this.thinkingContainer.createEl('p', {
-            text: 'Enable extended thinking by default for models that support it',
-            cls: 'setting-item-description'
-        });
+        // Effort pills container (created first, referenced in toggle)
+        const effortContainer = this.thinkingContainer.createDiv('nexus-thinking-effort');
+        if (!settings.defaultThinking.enabled) {
+            effortContainer.addClass('is-hidden');
+        }
 
-        // Enable thinking toggle
-        new Setting(this.thinkingContainer)
-            .setName('Enable thinking by default')
-            .setDesc('New conversations will use thinking mode when available')
+        // Single setting row with toggle + effort pills
+        const setting = new Setting(this.thinkingContainer)
+            .setName('Reasoning')
+            .setDesc('Let the model think step-by-step before responding')
             .addToggle(toggle => toggle
                 .setValue(settings.defaultThinking?.enabled ?? false)
                 .onChange(async (value) => {
@@ -369,37 +367,28 @@ export class ProvidersTab {
                     this.updateEffortVisibility(settings);
                 }));
 
-        // Effort level container
-        const effortContainer = this.thinkingContainer.createDiv('nexus-thinking-effort-container');
+        // Move effort pills into the setting control area
+        setting.controlEl.prepend(effortContainer);
 
-        if (!settings.defaultThinking.enabled) {
-            effortContainer.addClass('is-hidden');
-        }
-
-        // Effort level slider
-        const effortSetting = new Setting(effortContainer)
-            .setName('Default effort level')
-            .setDesc('Higher effort = more thorough reasoning');
-
-        // Create value display
-        this.effortValueEl = effortSetting.controlEl.createDiv('nexus-thinking-effort-value');
-        this.effortValueEl.textContent = EFFORT_LABELS[settings.defaultThinking.effort];
-
-        effortSetting.addSlider(slider => slider
-            .setLimits(0, 2, 1)
-            .setValue(EFFORT_LEVELS.indexOf(settings.defaultThinking?.effort || 'medium'))
-            .setDynamicTooltip()
-            .onChange(async (value) => {
-                const effort = EFFORT_LEVELS[value];
+        // Create effort pills
+        EFFORT_LEVELS.forEach(level => {
+            const pill = effortContainer.createEl('button', {
+                text: EFFORT_LABELS[level],
+                cls: 'nexus-effort-pill'
+            });
+            if (settings.defaultThinking?.effort === level) {
+                pill.addClass('is-active');
+            }
+            pill.addEventListener('click', async () => {
                 if (!settings.defaultThinking) {
                     settings.defaultThinking = { enabled: false, effort: 'medium' };
                 }
-                settings.defaultThinking.effort = effort;
-                if (this.effortValueEl) {
-                    this.effortValueEl.textContent = EFFORT_LABELS[effort];
-                }
+                settings.defaultThinking.effort = level;
+                effortContainer.querySelectorAll('.nexus-effort-pill').forEach(p => p.removeClass('is-active'));
+                pill.addClass('is-active');
                 await this.saveSettings();
-            }));
+            });
+        });
     }
 
     /**
@@ -438,12 +427,12 @@ export class ProvidersTab {
     }
 
     /**
-     * Update effort slider visibility
+     * Update effort pills visibility
      */
     private updateEffortVisibility(settings: LLMProviderSettings): void {
         if (!this.thinkingContainer) return;
 
-        const effortContainer = this.thinkingContainer.querySelector('.nexus-thinking-effort-container');
+        const effortContainer = this.thinkingContainer.querySelector('.nexus-thinking-effort');
         if (effortContainer) {
             if (settings.defaultThinking?.enabled) {
                 effortContainer.removeClass('is-hidden');

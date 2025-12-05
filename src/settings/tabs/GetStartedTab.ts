@@ -4,14 +4,16 @@
  * Features:
  * - Two setup paths: Internal Chat and MCP Integration
  * - Internal Chat: Configure providers, enable chat view
- * - MCP Integration: Smart merge existing config with Nexus
+ * - MCP Integration: Zero-friction setup with one-click config
  * - Platform-specific config file paths
+ * - Auto-detect and create Claude config
  */
 
 import { App, Setting, Notice, Platform } from 'obsidian';
 import { BackButton } from '../components/BackButton';
 import { BRAND_NAME, getPrimaryServerKey } from '../../constants/branding';
 import * as path from 'path';
+import * as fs from 'fs';
 
 type GetStartedView = 'paths' | 'internal-chat' | 'mcp-setup';
 
@@ -26,10 +28,6 @@ export class GetStartedTab {
     private container: HTMLElement;
     private services: GetStartedTabServices;
     private currentView: GetStartedView = 'paths';
-
-    // MCP config state
-    private existingConfig: string = '';
-    private outputEl?: HTMLElement;
 
     constructor(
         container: HTMLElement,
@@ -151,117 +149,118 @@ export class GetStartedTab {
             this.render();
         });
 
-        this.container.createEl('h3', { text: 'MCP Integration Setup' });
-        this.container.createEl('p', {
-            text: 'Connect external MCP-compatible tools like Claude Desktop, Cursor, or LM Studio to your Obsidian vault.',
-            cls: 'setting-item-description'
-        });
-
-        // Config file location
-        const configPathSection = this.container.createDiv('nexus-setup-step');
-        configPathSection.createEl('h4', { text: 'Config File Location' });
+        this.container.createEl('h3', { text: 'Claude Desktop Setup' });
 
         const configPath = this.getClaudeDesktopConfigPath();
-        const pathDisplay = configPathSection.createDiv('nexus-config-path');
-        pathDisplay.createEl('code', { text: configPath });
+        const configDir = path.dirname(configPath);
+        const configStatus = this.checkConfigStatus(configPath, configDir);
 
-        // Copy path button
-        new Setting(configPathSection)
-            .addButton(btn => btn
-                .setButtonText('Copy Path')
-                .onClick(() => {
-                    navigator.clipboard.writeText(configPath);
-                    new Notice('Path copied to clipboard');
-                }));
-
-        // MCP Config Generator
-        const generatorSection = this.container.createDiv('nexus-setup-step');
-        generatorSection.createEl('h4', { text: 'Generate Configuration' });
-        generatorSection.createEl('p', {
-            text: 'Paste your existing config below (optional), and we\'ll add Nexus to it. Or leave blank to generate a fresh config.',
-            cls: 'setting-item-description'
-        });
-
-        // Input for existing config
-        new Setting(generatorSection)
-            .setName('Existing config (optional)')
-            .setDesc('Paste your current claude_desktop_config.json content')
-            .addTextArea(text => {
-                text.setPlaceholder('{ "mcpServers": { ... } }')
-                    .setValue(this.existingConfig)
-                    .onChange(value => {
-                        this.existingConfig = value;
-                    });
-                text.inputEl.rows = 6;
-                text.inputEl.addClass('nexus-mcp-input');
+        // Compact status + action in one row
+        if (configStatus === 'no-claude-folder') {
+            // Claude not installed - show inline warning with action
+            const row = this.container.createDiv('nexus-mcp-row');
+            row.createEl('span', {
+                text: '⚠️ Claude Desktop not found',
+                cls: 'nexus-mcp-status nexus-mcp-warning'
             });
 
-        // Generate button
-        new Setting(generatorSection)
-            .addButton(btn => btn
-                .setButtonText('Generate Config')
-                .setCta()
-                .onClick(() => {
-                    this.generateMergedConfig();
-                }));
+            const actions = row.createDiv('nexus-mcp-actions');
+            const downloadBtn = actions.createEl('button', { text: 'Download', cls: 'mod-cta' });
+            downloadBtn.addEventListener('click', () => window.open('https://claude.ai/download', '_blank'));
 
-        // Output area
-        this.outputEl = generatorSection.createEl('pre', { cls: 'nexus-mcp-output' });
-        this.outputEl.style.display = 'none';
+            const refreshBtn = actions.createEl('button', { text: 'Refresh' });
+            refreshBtn.addEventListener('click', () => this.render());
 
-        // Copy button (hidden until config generated)
-        const copyContainer = generatorSection.createDiv('nexus-copy-container');
-        copyContainer.style.display = 'none';
+            // Help text below
+            this.container.createEl('p', {
+                text: 'Install Claude Desktop, open it once, then enable Settings → Developer → MCP Servers',
+                cls: 'nexus-mcp-help'
+            });
+        } else if (configStatus === 'nexus-configured') {
+            // Already configured - success state
+            const row = this.container.createDiv('nexus-mcp-row');
+            row.createEl('span', {
+                text: '✓ Connected',
+                cls: 'nexus-mcp-status nexus-mcp-success'
+            });
 
-        new Setting(copyContainer)
-            .addButton(btn => btn
-                .setButtonText('Copy to Clipboard')
-                .onClick(() => {
-                    if (this.outputEl) {
-                        navigator.clipboard.writeText(this.outputEl.textContent || '');
-                        new Notice('Config copied to clipboard');
-                    }
-                }));
+            const actions = row.createDiv('nexus-mcp-actions');
+            const openBtn = actions.createEl('button', { text: 'Open Config' });
+            openBtn.addEventListener('click', () => this.openConfigFile(configPath));
 
-        // Store reference for showing later
-        (this.outputEl as any).__copyContainer = copyContainer;
+            const revealBtn = actions.createEl('button', { text: this.getRevealButtonText() });
+            revealBtn.addEventListener('click', () => this.revealInFolder(configPath));
 
-        // Instructions
-        const instructionsSection = this.container.createDiv('nexus-setup-step');
-        instructionsSection.createEl('h4', { text: 'Next Steps' });
+            this.container.createEl('p', {
+                text: 'Restart Claude Desktop if you haven\'t already.',
+                cls: 'nexus-mcp-help'
+            });
+        } else {
+            // Ready to configure
+            const row = this.container.createDiv('nexus-mcp-row');
+            row.createEl('span', {
+                text: configStatus === 'no-config-file' ? 'Ready to configure' : 'Claude Desktop found',
+                cls: 'nexus-mcp-status'
+            });
 
-        const steps = instructionsSection.createEl('ol', { cls: 'nexus-setup-instructions' });
-        steps.createEl('li', { text: 'Generate the config above' });
-        steps.createEl('li', { text: 'Copy the generated JSON' });
-        steps.createEl('li', { text: 'Open your claude_desktop_config.json file' });
-        steps.createEl('li', { text: 'Replace the contents with the generated config' });
-        steps.createEl('li', { text: 'Save the file and restart Claude Desktop' });
+            const actions = row.createDiv('nexus-mcp-actions');
+            const configBtn = actions.createEl('button', { text: 'Add Nexus to Claude', cls: 'mod-cta' });
+            configBtn.addEventListener('click', () => this.autoConfigureNexus(configPath));
+        }
     }
 
     /**
-     * Generate merged MCP configuration
+     * Check the status of the Claude config
      */
-    private generateMergedConfig(): void {
-        if (!this.outputEl) return;
-
+    private checkConfigStatus(configPath: string, configDir: string): 'no-claude-folder' | 'no-config-file' | 'nexus-configured' | 'config-exists' {
         try {
-            // Parse existing config or create new
-            let config: any;
-
-            if (this.existingConfig.trim()) {
-                try {
-                    config = JSON.parse(this.existingConfig);
-                } catch (e) {
-                    new Notice('Invalid JSON in existing config. Please check the format.');
-                    return;
-                }
-            } else {
-                config = {};
+            // Check if Claude folder exists
+            if (!fs.existsSync(configDir)) {
+                return 'no-claude-folder';
             }
 
-            // Ensure mcpServers exists
-            if (!config.mcpServers) {
-                config.mcpServers = {};
+            // Check if config file exists
+            if (!fs.existsSync(configPath)) {
+                return 'no-config-file';
+            }
+
+            // Check if Nexus is already configured
+            const content = fs.readFileSync(configPath, 'utf-8');
+            const config = JSON.parse(content);
+            const vaultName = this.services.app.vault.getName();
+            const serverKey = getPrimaryServerKey(vaultName);
+
+            if (config.mcpServers && config.mcpServers[serverKey]) {
+                return 'nexus-configured';
+            }
+
+            return 'config-exists';
+        } catch (error) {
+            console.error('[GetStartedTab] Error checking config status:', error);
+            return 'no-claude-folder';
+        }
+    }
+
+    /**
+     * Auto-configure Nexus in Claude Desktop config
+     */
+    private async autoConfigureNexus(configPath: string): Promise<void> {
+        try {
+            let config: any = { mcpServers: {} };
+
+            // Read existing config if it exists
+            if (fs.existsSync(configPath)) {
+                const content = fs.readFileSync(configPath, 'utf-8');
+                try {
+                    config = JSON.parse(content);
+                    if (!config.mcpServers) {
+                        config.mcpServers = {};
+                    }
+                } catch (e) {
+                    // Invalid JSON, start fresh but warn user
+                    new Notice('Existing config was invalid JSON. Creating new config.');
+                    config = { mcpServers: {} };
+                }
             }
 
             // Add Nexus server config
@@ -274,22 +273,62 @@ export class GetStartedTab {
                 args: [connectorPath]
             };
 
-            // Format and display
-            const formatted = JSON.stringify(config, null, 2);
-            this.outputEl.textContent = formatted;
-            this.outputEl.style.display = 'block';
-
-            // Show copy button
-            const copyContainer = (this.outputEl as any).__copyContainer;
-            if (copyContainer) {
-                copyContainer.style.display = 'block';
+            // Ensure directory exists
+            const configDir = path.dirname(configPath);
+            if (!fs.existsSync(configDir)) {
+                fs.mkdirSync(configDir, { recursive: true });
             }
 
-            new Notice('Config generated successfully!');
+            // Write config
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
 
+            new Notice('✅ Nexus has been added to Claude Desktop config! Please restart Claude Desktop.');
+
+            // Re-render to show updated status
+            this.render();
         } catch (error) {
-            console.error('[GetStartedTab] Error generating config:', error);
-            new Notice(`Failed to generate config: ${(error as Error).message}`);
+            console.error('[GetStartedTab] Error auto-configuring:', error);
+            new Notice(`Failed to configure: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Open the config file in the default editor
+     */
+    private openConfigFile(configPath: string): void {
+        try {
+            // Use Electron's shell to open the file
+            const { shell } = require('electron');
+            shell.openPath(configPath);
+        } catch (error) {
+            console.error('[GetStartedTab] Error opening config file:', error);
+            new Notice('Failed to open config file. Please open it manually.');
+        }
+    }
+
+    /**
+     * Reveal the config file in the system file manager
+     */
+    private revealInFolder(configPath: string): void {
+        try {
+            const { shell } = require('electron');
+            shell.showItemInFolder(configPath);
+        } catch (error) {
+            console.error('[GetStartedTab] Error revealing in folder:', error);
+            new Notice('Failed to reveal in folder. Please navigate manually.');
+        }
+    }
+
+    /**
+     * Get OS-specific text for the reveal button
+     */
+    private getRevealButtonText(): string {
+        if (Platform.isWin) {
+            return 'Reveal in Explorer';
+        } else if (Platform.isMacOS) {
+            return 'Reveal in Finder';
+        } else {
+            return 'Reveal in Files';
         }
     }
 

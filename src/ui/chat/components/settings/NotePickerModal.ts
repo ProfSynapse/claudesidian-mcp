@@ -5,7 +5,7 @@
  * Provides fuzzy search to select vault notes to include as context.
  */
 
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { App, Modal, Setting, TFile, ButtonComponent } from 'obsidian';
 
 export interface NotePickerResult {
   selected: boolean;
@@ -65,17 +65,17 @@ export class NotePickerModal extends Modal {
     // Right side: Action buttons
     const actionsContainer = header.createDiv('note-picker-actions');
 
-    const cancelButton = actionsContainer.createEl('button', { text: 'Cancel' });
-    cancelButton.addEventListener('click', () => {
-      this.selectedNotePath = '';
-      this.close();
-    });
+    new ButtonComponent(actionsContainer)
+      .setButtonText('Cancel')
+      .onClick(() => {
+        this.selectedNotePath = '';
+        this.close();
+      });
 
-    const selectButton = actionsContainer.createEl('button', {
-      text: 'Select Note',
-      cls: 'mod-cta'
-    });
-    selectButton.addEventListener('click', () => this.handleSelect());
+    new ButtonComponent(actionsContainer)
+      .setButtonText('Select Note')
+      .setCta()
+      .onClick(() => this.handleSelect());
 
     // Form
     const form = contentEl.createDiv('note-picker-form');

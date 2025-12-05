@@ -4207,6 +4207,82 @@ a:hover {
     line-height: 1.5;
 }
 
+/* MCP Setup - Compact Row Layout */
+.nexus-mcp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.nexus-mcp-status {
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.nexus-mcp-status.nexus-mcp-warning {
+    color: var(--text-error);
+}
+
+.nexus-mcp-status.nexus-mcp-success {
+    color: var(--text-success);
+}
+
+.nexus-mcp-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.nexus-mcp-actions button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.nexus-mcp-help {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    margin: 8px 0 0 0;
+}
+
+/* Reasoning - Compact Inline */
+.nexus-thinking-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.nexus-thinking-effort {
+    display: flex;
+    gap: 4px;
+    margin-right: 8px;
+}
+
+.nexus-effort-pill {
+    padding: 3px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nexus-effort-pill:hover {
+    border-color: var(--interactive-accent);
+    color: var(--text-normal);
+}
+
+.nexus-effort-pill.is-active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
 /* Copy container */
 .nexus-copy-container {
     margin-top: 12px;
@@ -4382,14 +4458,71 @@ a:hover {
     border-color: var(--interactive-accent);
 }
 
-/* Form section (for grouped items like workflows/files) */
-.nexus-form-section {
+/* Obsidian native components - make them fill width in forms */
+.nexus-form-field input[type="text"],
+.nexus-form-field textarea,
+.nexus-form-field .dropdown {
+    width: 100%;
+}
+
+.nexus-dropdown-container,
+.nexus-dropdown-container .dropdown {
+    width: 100%;
+}
+
+/* Workflow editor styles */
+.nexus-workflow-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.nexus-workflow-title {
+    margin: 0;
+}
+
+.nexus-workflow-form {
+    max-width: 600px;
+}
+
+/* Item row with native input component */
+.nexus-item-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Workspace Form - Scrollable single form */
+.nexus-workspace-form {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding-top: 16px;
-    border-top: 1px solid var(--background-modifier-border);
-    margin-top: 8px;
+}
+
+/* Form section with header */
+.nexus-form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.nexus-form-section:first-child {
+    padding-top: 0;
+}
+
+.nexus-form-section:last-child {
+    border-bottom: none;
+}
+
+.nexus-section-header {
+    margin: 0 0 4px 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 /* Item list container */

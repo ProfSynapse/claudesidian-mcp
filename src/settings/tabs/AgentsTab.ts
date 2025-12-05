@@ -8,7 +8,7 @@
  * - Auto-save on all changes
  */
 
-import { Notice } from 'obsidian';
+import { Notice, TextComponent, TextAreaComponent, ButtonComponent } from 'obsidian';
 import { SettingsRouter } from '../SettingsRouter';
 import { BackButton } from '../components/BackButton';
 import { CustomPrompt } from '../../types/mcp/CustomPromptTypes';
@@ -179,32 +179,26 @@ export class AgentsTab {
         // Name field
         const nameField = form.createDiv('nexus-form-field');
         nameField.createEl('label', { text: 'Name', cls: 'nexus-form-label' });
-        const nameInput = nameField.createEl('input', {
-            type: 'text',
-            placeholder: 'e.g., Code Reviewer',
-            cls: 'nexus-form-input'
-        });
-        nameInput.value = agent.name || '';
-        nameInput.addEventListener('input', (e) => {
-            agent.name = (e.target as HTMLInputElement).value;
+        const nameInput = new TextComponent(nameField);
+        nameInput.setPlaceholder('e.g., Code Reviewer');
+        nameInput.setValue(agent.name || '');
+        nameInput.onChange((value) => {
+            agent.name = value;
             this.debouncedSave();
         });
 
         // Description field
         const descField = form.createDiv('nexus-form-field');
         descField.createEl('label', { text: 'Description', cls: 'nexus-form-label' });
-        const descHint = descField.createEl('span', {
+        descField.createEl('span', {
             text: 'A brief description of what this agent does',
             cls: 'nexus-form-hint'
         });
-        const descInput = descField.createEl('textarea', {
-            placeholder: 'e.g., Reviews code for best practices and potential issues',
-            cls: 'nexus-form-textarea'
-        });
-        descInput.rows = 2;
-        descInput.value = agent.description || '';
-        descInput.addEventListener('input', (e) => {
-            agent.description = (e.target as HTMLTextAreaElement).value;
+        const descInput = new TextAreaComponent(descField);
+        descInput.setPlaceholder('e.g., Reviews code for best practices and potential issues');
+        descInput.setValue(agent.description || '');
+        descInput.onChange((value) => {
+            agent.description = value;
             this.debouncedSave();
         });
 
@@ -215,35 +209,33 @@ export class AgentsTab {
             text: 'Instructions that define this agent\'s behavior and expertise',
             cls: 'nexus-form-hint'
         });
-        const promptInput = promptField.createEl('textarea', {
-            placeholder: 'You are an expert code reviewer. When reviewing code, focus on...',
-            cls: 'nexus-form-textarea nexus-form-textarea-large'
-        });
-        promptInput.rows = 8;
-        promptInput.value = agent.prompt || '';
-        promptInput.addEventListener('input', (e) => {
-            agent.prompt = (e.target as HTMLTextAreaElement).value;
+        const promptInput = new TextAreaComponent(promptField);
+        promptInput.setPlaceholder('You are an expert code reviewer. When reviewing code, focus on...');
+        promptInput.setValue(agent.prompt || '');
+        promptInput.onChange((value) => {
+            agent.prompt = value;
             this.debouncedSave();
         });
+        // Make the system prompt textarea larger
+        promptInput.inputEl.rows = 8;
+        promptInput.inputEl.addClass('nexus-form-textarea-large');
 
         // Action buttons
         const actions = form.createDiv('nexus-form-actions');
 
-        const saveBtn = actions.createEl('button', {
-            text: 'Save',
-            cls: 'mod-cta'
-        });
-        saveBtn.addEventListener('click', async () => {
-            await this.saveCurrentAgent();
-            new Notice('Agent saved');
-        });
+        new ButtonComponent(actions)
+            .setButtonText('Save')
+            .setCta()
+            .onClick(async () => {
+                await this.saveCurrentAgent();
+                new Notice('Agent saved');
+            });
 
         if (!this.isNewAgent && agent.id) {
-            const deleteBtn = actions.createEl('button', {
-                text: 'Delete',
-                cls: 'mod-warning'
-            });
-            deleteBtn.addEventListener('click', () => this.deleteCurrentAgent());
+            new ButtonComponent(actions)
+                .setButtonText('Delete')
+                .setWarning()
+                .onClick(() => this.deleteCurrentAgent());
         }
     }
 

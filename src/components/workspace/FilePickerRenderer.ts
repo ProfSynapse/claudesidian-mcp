@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, setIcon } from 'obsidian';
+import { App, TFile, TFolder, setIcon, ButtonComponent, TextComponent } from 'obsidian';
 
 const DEBOUNCE_MS = 150;
 
@@ -15,7 +15,7 @@ export class FilePickerRenderer {
   private selectedFiles: Set<string>;
   private expandedFolders: Set<string> = new Set();
   private treeContainer?: HTMLElement;
-  private searchInput?: HTMLInputElement;
+  private searchComponent?: TextComponent;
   private searchQuery: string = '';
   private searchTimeout?: ReturnType<typeof setTimeout>;
   private rootPath: string;
@@ -46,29 +46,23 @@ export class FilePickerRenderer {
     const header = container.createDiv('nexus-file-picker-header');
 
     const leftSection = header.createDiv('nexus-file-picker-left');
-    const backButton = leftSection.createEl('button', {
-      text: '← Back',
-      cls: 'nexus-btn-small'
-    });
-    backButton.addEventListener('click', () => this.onCancel());
+    new ButtonComponent(leftSection)
+      .setButtonText('← Back')
+      .onClick(() => this.onCancel());
     leftSection.createEl('h3', { text: 'Select Key Files' });
 
     const actions = header.createDiv('nexus-file-picker-actions');
-    const doneButton = actions.createEl('button', {
-      text: 'Done',
-      cls: 'mod-cta'
-    });
-    doneButton.addEventListener('click', () => this.handleDone());
+    new ButtonComponent(actions)
+      .setButtonText('Done')
+      .setCta()
+      .onClick(() => this.handleDone());
 
     // Search input
     const searchField = container.createDiv('nexus-form-field');
-    this.searchInput = searchField.createEl('input', {
-      type: 'text',
-      placeholder: 'Filter files and folders...',
-      cls: 'nexus-form-input'
-    });
-    this.searchInput.addEventListener('input', (e) => {
-      this.debouncedSearch((e.target as HTMLInputElement).value);
+    this.searchComponent = new TextComponent(searchField);
+    this.searchComponent.setPlaceholder('Filter files and folders...');
+    this.searchComponent.onChange((value) => {
+      this.debouncedSearch(value);
     });
 
     // Tree container

@@ -5,7 +5,7 @@
  * Refactored from 702 lines to ~200 lines following SOLID principles.
  */
 
-import { App, Modal } from 'obsidian';
+import { App, Modal, ButtonComponent } from 'obsidian';
 import { WorkspaceService } from '../../../services/WorkspaceService';
 import { ModelAgentManager } from '../services/ModelAgentManager';
 import { ModelOption } from './ModelSelector';
@@ -176,14 +176,14 @@ export class ChatSettingsModal extends Modal {
   private renderActionButtons(container: HTMLElement): void {
     const buttonContainer = container.createDiv('chat-settings-button-container');
 
-    const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
-    cancelButton.addEventListener('click', () => this.close());
+    new ButtonComponent(buttonContainer)
+      .setButtonText('Cancel')
+      .onClick(() => this.close());
 
-    const saveButton = buttonContainer.createEl('button', {
-      text: 'Save',
-      cls: 'mod-cta'
-    });
-    saveButton.addEventListener('click', () => this.handleSave());
+    new ButtonComponent(buttonContainer)
+      .setButtonText('Save')
+      .setCta()
+      .onClick(() => this.handleSave());
   }
 
   /**

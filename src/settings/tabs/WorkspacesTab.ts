@@ -8,7 +8,7 @@
  * - Auto-save on all changes
  */
 
-import { App, Setting, Notice } from 'obsidian';
+import { App, Setting, Notice, ButtonComponent } from 'obsidian';
 import { SettingsRouter, RouterState } from '../SettingsRouter';
 import { BackButton } from '../components/BackButton';
 import { WorkspaceFormRenderer } from '../../components/workspace/WorkspaceFormRenderer';
@@ -257,22 +257,20 @@ export class WorkspacesTab {
         const actions = this.container.createDiv('nexus-form-actions');
 
         // Save button
-        const saveBtn = actions.createEl('button', {
-            text: 'Save',
-            cls: 'mod-cta'
-        });
-        saveBtn.addEventListener('click', async () => {
-            await this.saveCurrentWorkspace();
-            new Notice('Workspace saved');
-        });
+        new ButtonComponent(actions)
+            .setButtonText('Save')
+            .setCta()
+            .onClick(async () => {
+                await this.saveCurrentWorkspace();
+                new Notice('Workspace saved');
+            });
 
         // Delete button (only for existing workspaces)
         if (this.currentWorkspace.id && this.workspaces.some(w => w.id === this.currentWorkspace?.id)) {
-            const deleteBtn = actions.createEl('button', {
-                text: 'Delete',
-                cls: 'mod-warning'
-            });
-            deleteBtn.addEventListener('click', () => this.deleteCurrentWorkspace());
+            new ButtonComponent(actions)
+                .setButtonText('Delete')
+                .setWarning()
+                .onClick(() => this.deleteCurrentWorkspace());
         }
     }
 
