@@ -101,13 +101,11 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
   }
 
   async execute(params: SearchDirectoryParams): Promise<SearchDirectoryResult> {
-    const startTime = Date.now();
-
     try {
       // Validate parameters
       const validationError = this.validateParams(params);
       if (validationError) {
-        return this.createErrorResult(validationError, params, startTime);
+        return this.createErrorResult(validationError);
       }
 
       const query = params.query.trim();
@@ -146,23 +144,14 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
         params.includeContent !== false
       );
 
-      return {
-        success: true,
-        query: params.query,
-        searchedPaths: params.paths,
+      return this.prepareResult(true, {
         results: results,
-        totalResults: matches.length,
-        executionTime: Date.now() - startTime,
-        searchCapabilities: this.getCapabilities()
-      };
+        total: matches.length,
+        hasMore: matches.length > limit
+      });
 
     } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      return this.createErrorResult(
-        `Directory search failed: ${errorMessage}`,
-        params,
-        startTime
-      );
+      return this.createErrorResult(`Directory search failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -186,72 +175,14 @@ export class SearchDirectoryMode extends BaseMode<SearchDirectoryParams, SearchD
   /**
    * Create an error result with diagnostics
    * @param errorMessage The error message
-   * @param params The request parameters
-   * @param startTime The start time for execution time calculation
    * @returns Error result
    */
   protected createErrorResult(
-    errorMessage: string,
-    params: SearchDirectoryParams,
-    startTime: number
+    errorMessage: string
   ): SearchDirectoryResult {
-    return this.prepareResult(false, {
-      query: params.query || '',
-      searchedPaths: params.paths || [],
-      results: [],
-      totalResults: 0,
-      executionTime: Date.now() - startTime,
-      searchCapabilities: this.getCapabilities(),
-      error: errorMessage,
-      parameterHints: this.getParameterHints(errorMessage),
-      suggestions: this.getSuggestions(errorMessage),
-      providedParams: params
-    }, errorMessage, params.context);
+    return this.prepareResult(false, undefined, errorMessage);
   }
 
-  /**
-   * Get parameter hints based on error type
-   * @param errorMessage The error message
-   * @returns Parameter hints
-   */
-  private getParameterHints(errorMessage: string): string {
-    if (errorMessage.includes('query')) {
-      return '🔍 The "query" parameter is REQUIRED. Provide the search term you want to find.\n\nExample: { "query": "fallujah", "paths": ["/"] }';
-    }
-    if (errorMessage.includes('paths')) {
-      return '📁 The "paths" parameter is REQUIRED and must be a non-empty array.\n\nSpecify which directories to search:\n- Use ["/"] to search the entire vault\n- Use ["FolderName"] for a specific folder\n- Use ["Folder1", "Folder2"] for multiple folders';
-    }
-    return '💡 Check that your parameters are correctly formatted:\n- query: string (search term)\n- paths: array of directory paths (e.g., ["/"])';
-  }
-
-  /**
-   * Get suggestions based on error type
-   * @param errorMessage The error message
-   * @returns Array of suggestions
-   */
-  private getSuggestions(errorMessage: string): string[] {
-    if (errorMessage.includes('query')) {
-      return [
-        'Use "query" (not "filter") for the search term',
-        'Provide a simple text search term without wildcards',
-        'Example: "query": "fallujah"'
-      ];
-    }
-    if (errorMessage.includes('paths')) {
-      return [
-        'Provide a "paths" array with at least one directory',
-        'Example for whole vault: "paths": ["/"]',
-        'Example for specific folder: "paths": ["Projects"]',
-        'Example for multiple folders: "paths": ["Work", "Personal"]'
-      ];
-    }
-    return [
-      'Verify that the specified directories exist in your vault',
-      'Check that paths are formatted correctly (use "/" for root)',
-      'Ensure query is a non-empty string',
-      'Try simplifying your search parameters'
-    ];
-  }
 
   /**
    * Apply workspace context for boosted relevance (doesn't filter)

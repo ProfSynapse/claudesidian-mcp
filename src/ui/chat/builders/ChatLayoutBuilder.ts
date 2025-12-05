@@ -26,6 +26,7 @@ export interface ChatLayoutElements {
   hamburgerButton: HTMLElement;
   backdrop: HTMLElement;
   sidebarContainer: HTMLElement;
+  loadingOverlay: HTMLElement;
 }
 
 export class ChatLayoutBuilder {
@@ -51,6 +52,9 @@ export class ChatLayoutBuilder {
     const inputContainer = mainContainer.createDiv('chat-input-container');
     const contextContainer = mainContainer.createDiv('chat-context-container');
 
+    // Nexus model loading overlay (hidden by default)
+    const loadingOverlay = this.createLoadingOverlay(mainContainer);
+
     // Backdrop and sidebar
     const backdrop = chatLayout.createDiv('chat-backdrop');
     const { sidebarContainer, conversationListContainer, newChatButton } = this.createSidebar(chatLayout);
@@ -65,8 +69,48 @@ export class ChatLayoutBuilder {
       chatTitle,
       hamburgerButton,
       backdrop,
-      sidebarContainer
+      sidebarContainer,
+      loadingOverlay
     };
+  }
+
+  /**
+   * Create Nexus model loading overlay (hidden by default)
+   */
+  private static createLoadingOverlay(container: HTMLElement): HTMLElement {
+    const overlay = container.createDiv('nexus-loading-overlay');
+    overlay.style.display = 'none';
+
+    const content = overlay.createDiv('nexus-loading-content');
+
+    // Animated spinner
+    const spinner = content.createDiv('nexus-loading-spinner');
+    spinner.innerHTML = `
+      <svg viewBox="0 0 50 50" class="nexus-spinner">
+        <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+          <animate attributeName="stroke-dasharray" values="1,150;90,150;90,150" dur="1.5s" repeatCount="indefinite"/>
+          <animate attributeName="stroke-dashoffset" values="0;-35;-125" dur="1.5s" repeatCount="indefinite"/>
+        </circle>
+      </svg>
+    `;
+
+    // Status text
+    const statusText = content.createDiv('nexus-loading-status');
+    statusText.textContent = 'Loading Nexus model...';
+    statusText.dataset.statusEl = 'true';
+
+    // Progress bar
+    const progressContainer = content.createDiv('nexus-loading-progress-container');
+    const progressBar = progressContainer.createDiv('nexus-loading-progress-bar');
+    progressBar.style.width = '0%';
+    progressBar.dataset.progressEl = 'true';
+
+    // Progress text
+    const progressText = content.createDiv('nexus-loading-progress-text');
+    progressText.textContent = '0%';
+    progressText.dataset.progressTextEl = 'true';
+
+    return overlay;
   }
 
   /**

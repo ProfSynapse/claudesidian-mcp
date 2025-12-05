@@ -57,11 +57,11 @@ export class ListAgentsMode extends BaseMode<ListAgentsParams, ListAgentsResult>
         totalCount: allPrompts.length,
         enabledCount: enabledPrompts.length,
         message: warningMessage
-      }, undefined, undefined, undefined, params.context.sessionId, params.context);
+      }, undefined);
       
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.listAgents);
     } catch (error) {
-      return createResult<ListAgentsResult>(false, null, `Failed to list prompts: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ListAgentsResult>(false, null, `Failed to list prompts: ${error}`);
     }
   }
   

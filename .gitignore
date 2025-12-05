@@ -63,9 +63,6 @@ hive-mind-prompt-*.txt
 
 # MLC/WebLLM model compilation
 mlc-venv/
-nexus-tools-merged/
-nexus-tools-*-mlc/
+local-models/
 *.wasm
-models/
-nexus-tools-q4f16-mlc-new
 agentic-flow-main/

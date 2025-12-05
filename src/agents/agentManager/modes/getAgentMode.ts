@@ -37,7 +37,7 @@ export class GetAgentMode extends BaseMode<GetAgentParams, GetAgentResult> {
       
       // Must provide either id or name
       if (!id && !name) {
-        return createResult<GetAgentResult>(false, null, 'Either id or name must be provided', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<GetAgentResult>(false, null, 'Either id or name must be provided');
       }
       
       // Get prompt by id or name
@@ -51,7 +51,7 @@ export class GetAgentMode extends BaseMode<GetAgentParams, GetAgentResult> {
       
       if (!prompt) {
         const identifier = id ? `ID "${id}"` : `name "${name}"`;
-        return createResult<GetAgentResult>(false, null, `Agent with ${identifier} not found`, undefined, undefined, params.context.sessionId, params.context);
+        return createResult<GetAgentResult>(false, null, `Agent with ${identifier} not found`);
       }
 
       // Create message with persona instruction and warning (prompt content is already in the prompt field)
@@ -71,10 +71,10 @@ To execute tasks: User must explicitly request agentManager_executePrompt`;
         message: message
       };
       
-      const result = createResult<GetAgentResult>(true, resultWithMessage, undefined, undefined, undefined, params.context.sessionId, params.context);
+      const result = createResult<GetAgentResult>(true, resultWithMessage, undefined);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.getAgent);
     } catch (error) {
-      return createResult<GetAgentResult>(false, null, `Failed to get agent: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<GetAgentResult>(false, null, `Failed to get agent: ${error}`);
     }
   }
   

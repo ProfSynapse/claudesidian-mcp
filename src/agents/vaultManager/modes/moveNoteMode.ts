@@ -34,27 +34,18 @@ export class MoveNoteMode extends BaseMode<MoveNoteParams, MoveNoteResult> {
    */
   async execute(params: MoveNoteParams): Promise<MoveNoteResult> {
     const { path, newPath, overwrite } = params;
-    
+
     try {
       await FileOperations.moveNote(this.app, path, newPath, overwrite);
-      
-      const result = {
-        path,
-        newPath,
-        success: true
-      };
+
+      const result = this.prepareResult(true, { path, newPath });
 
       // Generate nudges for move operations
       const nudges = this.generateMoveNudges();
-      
+
       return addRecommendations(result, nudges);
     } catch (error) {
-      return {
-        path,
-        newPath,
-        success: false,
-        error: createErrorMessage('Failed to move note: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to move note: ', error));
     }
   }
   

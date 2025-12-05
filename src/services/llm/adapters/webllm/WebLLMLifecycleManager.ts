@@ -39,6 +39,8 @@ export class WebLLMLifecycleManager {
    * Called when AdapterRegistry initializes
    */
   setAdapter(adapter: WebLLMAdapter | null): void {
+    const instanceId = (adapter as any)?.instanceId;
+    console.log(`[NEXUS_DEBUG] LifecycleManager.setAdapter instance=#${instanceId}`);
     this.adapter = adapter;
   }
 
@@ -56,18 +58,24 @@ export class WebLLMLifecycleManager {
     try {
       const registry = (window as any).app?.plugins?.plugins;
       if (!registry) {
+        console.log('[NEXUS_DEBUG] isNexusDefault: No plugin registry');
         return false;
       }
 
       for (const id of getAllPluginIds()) {
         const plugin = registry[id];
-        if (plugin?.settings?.llmProviders?.defaultModel?.provider === 'webllm') {
+        // Note: plugin.settings is the Settings manager class
+        // plugin.settings.settings is the actual MCPSettings object
+        const defaultProvider = plugin?.settings?.settings?.llmProviders?.defaultModel?.provider;
+        console.log('[NEXUS_DEBUG] isNexusDefault:', { defaultProvider });
+        if (defaultProvider === 'webllm') {
           return true;
         }
       }
 
       return false;
-    } catch {
+    } catch (error) {
+      console.error('[NEXUS_DEBUG] isNexusDefault error:', error);
       return false;
     }
   }
@@ -91,19 +99,31 @@ export class WebLLMLifecycleManager {
 
   /**
    * Handle ChatView opened event
-   * Pre-load model if Nexus is default provider and model is installed
+   * Pre-load model if Nexus is default provider
+   * Note: WebLLM uses browser Cache API, so we don't check isModelInstalled()
+   * (that checks vault storage which is a separate system)
    */
   async handleChatViewOpened(): Promise<void> {
     this.isChatViewOpen = true;
 
-    if (!this.adapter) return;
+    if (!this.adapter) {
+      console.log('[NEXUS_DEBUG] ChatViewOpened: No adapter');
+      return;
+    }
 
     const isNexusDefault = this.isNexusDefaultProvider();
-    const isInstalled = await this.isModelInstalled();
     const isLoaded = this.adapter.isModelLoaded();
+    const adapterState = this.adapter.getState();
 
-    if (isNexusDefault && isInstalled && !isLoaded && !this.isLoading) {
-      console.log('[NexusLifecycle] ChatView opened with Nexus as default - pre-loading model');
+    console.log('[NEXUS_DEBUG] ChatViewOpened:', {
+      isNexusDefault,
+      isLoaded,
+      status: adapterState?.status,
+    });
+
+    // Auto-load if Nexus is default - WebLLM will use browser cache if available
+    if (isNexusDefault && !isLoaded && !this.isLoading) {
+      console.log('[NEXUS_DEBUG] Auto-loading Nexus model');
       await this.loadModel();
     }
   }
@@ -159,22 +179,21 @@ export class WebLLMLifecycleManager {
 
   /**
    * Load the model into GPU memory
+   * Note: WebLLM uses browser Cache API for model storage, NOT vault storage.
+   * We don't check isModelInstalled() because that checks the wrong storage system.
+   * WebLLM will automatically use cached model if available, or download if not.
    */
   async loadModel(): Promise<void> {
     if (!this.adapter || this.isLoading) return;
 
     const modelSpec = WEBLLM_MODELS[0];
     if (!modelSpec) {
-      console.warn('[NexusLifecycle] No model spec available');
+      console.warn('[NEXUS_DEBUG] loadModel: No model spec');
       return;
     }
 
-    // Check if installed
-    const isInstalled = await this.isModelInstalled();
-    if (!isInstalled) {
-      console.warn('[NexusLifecycle] Model not installed, skipping load');
-      return;
-    }
+    const adapterInstanceId = (this.adapter as any)?.instanceId;
+    console.log(`[NEXUS_DEBUG] loadModel: Starting for ${modelSpec.name} on adapter instance=#${adapterInstanceId}`);
 
     this.isLoading = true;
     this.callbacks.onLoadingStart?.();

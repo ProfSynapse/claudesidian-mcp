@@ -32,22 +32,13 @@ export class MoveFolderMode extends BaseMode<MoveFolderParams, MoveFolderResult>
    */
   async execute(params: MoveFolderParams): Promise<MoveFolderResult> {
     const { path, newPath, overwrite } = params;
-    
+
     try {
       await FileOperations.moveFolder(this.app, path, newPath, overwrite);
-      
-      return {
-        path,
-        newPath,
-        success: true
-      };
+
+      return this.prepareResult(true, { path, newPath });
     } catch (error) {
-      return {
-        path,
-        newPath,
-        success: false,
-        error: createErrorMessage('Failed to move folder: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to move folder: ', error));
     }
   }
   

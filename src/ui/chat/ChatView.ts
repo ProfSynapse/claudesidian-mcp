@@ -104,9 +104,20 @@ export class ChatView extends ItemView {
     this.initializeArchitecture();
     await this.loadInitialData();
 
+    // Set up Nexus lifecycle callbacks for loading indicator
+    const lifecycleManager = getWebLLMLifecycleManager();
+    lifecycleManager.setCallbacks({
+      onLoadingStart: () => this.showNexusLoadingOverlay(),
+      onLoadingProgress: (progress, stage) => this.updateNexusLoadingProgress(progress, stage),
+      onLoadingComplete: () => this.hideNexusLoadingOverlay(),
+      onError: (error) => {
+        this.hideNexusLoadingOverlay();
+        console.error('[ChatView] Nexus loading error:', error);
+      }
+    });
+
     // Notify Nexus lifecycle manager that ChatView is open
     // This triggers pre-loading if Nexus is the default provider
-    const lifecycleManager = getWebLLMLifecycleManager();
     lifecycleManager.handleChatViewOpened().catch((error) => {
       console.warn('[ChatView] Nexus lifecycle manager error on open:', error);
     });
@@ -577,6 +588,71 @@ export class ChatView extends ItemView {
         }
       }
     }
+  }
+
+  // Nexus loading overlay methods
+
+  /**
+   * Show the Nexus model loading overlay
+   */
+  private showNexusLoadingOverlay(): void {
+    const overlay = this.layoutElements?.loadingOverlay;
+    if (!overlay) return;
+
+    overlay.style.display = 'flex';
+    // Trigger reflow for animation
+    overlay.offsetHeight;
+    overlay.addClass('is-visible');
+  }
+
+  /**
+   * Update Nexus loading progress
+   */
+  private updateNexusLoadingProgress(progress: number, stage: string): void {
+    const overlay = this.layoutElements?.loadingOverlay;
+    if (!overlay) return;
+
+    const statusEl = overlay.querySelector('[data-status-el]');
+    const progressBar = overlay.querySelector('[data-progress-el]') as HTMLElement;
+    const progressText = overlay.querySelector('[data-progress-text-el]');
+
+    const percent = Math.round(progress * 100);
+
+    if (statusEl) {
+      statusEl.textContent = stage || 'Loading Nexus model...';
+    }
+
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+    }
+
+    if (progressText) {
+      progressText.textContent = `${percent}%`;
+    }
+  }
+
+  /**
+   * Hide the Nexus model loading overlay
+   */
+  private hideNexusLoadingOverlay(): void {
+    const overlay = this.layoutElements?.loadingOverlay;
+    if (!overlay) return;
+
+    overlay.removeClass('is-visible');
+
+    // Wait for transition then hide
+    setTimeout(() => {
+      overlay.style.display = 'none';
+
+      // Reset progress
+      const progressBar = overlay.querySelector('[data-progress-el]') as HTMLElement;
+      const progressText = overlay.querySelector('[data-progress-text-el]');
+      const statusEl = overlay.querySelector('[data-status-el]');
+
+      if (progressBar) progressBar.style.width = '0%';
+      if (progressText) progressText.textContent = '0%';
+      if (statusEl) statusEl.textContent = 'Loading Nexus model...';
+    }, 300);
   }
 
   private cleanup(): void {

@@ -3,6 +3,7 @@
  * Handles model filtering, provider management, and model information
  */
 
+import { Vault } from 'obsidian';
 import { ModelInfo } from '../adapters/types';
 import { LLMProviderSettings, LLMProviderConfig } from '../../../types';
 import { LLMService } from '../core/LLMService';
@@ -27,10 +28,14 @@ export interface ProviderInfo {
 export class LLMProviderManager {
   private llmService: LLMService;
   private settings: LLMProviderSettings;
+  private vault?: Vault;
+  private mcpConnector?: any;
 
-  constructor(settings: LLMProviderSettings) {
+  constructor(settings: LLMProviderSettings, mcpConnector?: any, vault?: Vault) {
     this.settings = settings;
-    this.llmService = new LLMService(settings);
+    this.vault = vault;
+    this.mcpConnector = mcpConnector;
+    this.llmService = new LLMService(settings, mcpConnector, vault);
   }
 
   /**

@@ -15,8 +15,8 @@ export { WebLLMVRAMDetector } from './WebLLMVRAMDetector';
 // Model definitions
 export {
   WEBLLM_MODELS,
-  HF_MODEL_REPO,
   HF_BASE_URL,
+  MODEL_LIBS,
   getWebLLMModel,
   getModelsForVRAM,
   getBestModelForVRAM,

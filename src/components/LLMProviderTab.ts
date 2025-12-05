@@ -38,8 +38,9 @@ export class LLMProviderTab {
     this.containerEl = options.containerEl;
     this.settings = options.settings;
     this.onSettingsChange = options.onSettingsChange;
-    this.providerManager = new LLMProviderManager(this.settings);
     this.app = options.app || (window as any).app;
+    // Pass vault for Nexus (WebLLM) support
+    this.providerManager = new LLMProviderManager(this.settings, undefined, this.app.vault);
     this.staticModelsService = StaticModelsService.getInstance();
 
     this.buildContent();
@@ -169,8 +170,11 @@ export class LLMProviderTab {
           if (modelExists) {
             dropdown.setValue(currentModel);
           } else if (WEBLLM_MODELS.length > 0) {
+            // Auto-select first model and save settings
             dropdown.setValue(WEBLLM_MODELS[0].id);
             this.settings.defaultModel.model = WEBLLM_MODELS[0].id;
+            // Important: Save settings after auto-selecting model
+            this.onSettingsChange(this.settings);
           }
 
           dropdown.onChange((value: string) => {

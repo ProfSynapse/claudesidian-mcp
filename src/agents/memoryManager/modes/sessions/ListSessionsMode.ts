@@ -67,34 +67,15 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
             workspaceName: 'Unknown Workspace'
           }));
 
-      // Prepare result
-      const contextString = workspaceId
-        ? `Found ${enhancedSessions.length} of ${paginatedResult.totalItems} session(s) in workspace ${workspaceId}`
-        : `Found ${enhancedSessions.length} of ${paginatedResult.totalItems} session(s) across all workspaces`;
-
-      return this.prepareResult(
-        true,
-        {
-          sessions: enhancedSessions,
-          total: paginatedResult.totalItems,
-          filtered: enhancedSessions.length,
-          workspaceId: workspaceId,
-          pagination: {
-            page: paginatedResult.page,
-            pageSize: paginatedResult.pageSize,
-            totalPages: paginatedResult.totalPages,
-            hasNextPage: paginatedResult.hasNextPage,
-            hasPreviousPage: paginatedResult.hasPreviousPage
-          },
-          filters: {
-            order: params.order || 'desc',
-            limit: params.limit
-          }
-        },
-        undefined,
-        contextString,
-        inheritedContext || undefined
-      );
+      return this.prepareResult(true, {
+        sessions: enhancedSessions,
+        total: paginatedResult.totalItems,
+        page: paginatedResult.page,
+        pageSize: paginatedResult.pageSize,
+        totalPages: paginatedResult.totalPages,
+        hasNextPage: paginatedResult.hasNextPage,
+        hasPreviousPage: paginatedResult.hasPreviousPage
+      });
 
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error listing sessions: ', error));
@@ -150,17 +131,6 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
     return extractContextFromParams(params);
   }
 
-  /**
-   * Prepare standardized result format
-   */
-  protected prepareResult(success: boolean, data?: any, contextData?: any, message?: string, workspaceContext?: any): SessionResult {
-    return {
-      success,
-      data: data || {},
-      workspaceContext
-    };
-  }
-
   getParameterSchema(): any {
     const customSchema = {
       type: 'object',
@@ -191,15 +161,11 @@ export class ListSessionsMode extends BaseMode<ListSessionsParams, SessionResult
         },
         data: {
           type: 'object',
-          description: 'Session data'
+          description: 'Session data with pagination'
         },
-        message: {
+        error: {
           type: 'string',
-          description: 'Result message'
-        },
-        workspaceContext: {
-          type: 'object',
-          description: 'Workspace context'
+          description: 'Error message if operation failed'
         }
       },
       required: ['success'],

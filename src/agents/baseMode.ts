@@ -151,28 +151,18 @@ export abstract class BaseMode<T extends CommonParameters = CommonParameters, R 
     if (!sessionId) {
       // Session ID is required, so we should report an error
       return createResult<R>(
-        false, 
-        null, 
-        'Session ID is required but not provided',
-        workspaceContext, 
-        undefined,
-        undefined
+        false,
+        null,
+        'Session ID is required but not provided'
       );
     }
-    
-    // If no workspace context was explicitly provided, but there's a parent context,
-    // inherit the workspace context from the parent
-    if (!workspaceContext && (this as any).parentContext) {
-      workspaceContext = (this as any).parentContext;
-    }
-    
+
+    // Don't echo back context fields - the LLM already knows them since it passed them in.
+    // Only return success, data, and error.
     return createResult<R>(
-      success, 
-      data, 
-      error, 
-      workspaceContext, 
-      sessionId,
-      context
+      success,
+      data,
+      error
     );
   }
   

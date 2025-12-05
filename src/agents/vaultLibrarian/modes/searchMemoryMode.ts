@@ -140,18 +140,10 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
   }
 
   async execute(params: SearchMemoryParams): Promise<SearchMemoryResult> {
-    const startTime = Date.now();
-    
     try {
       // Simple parameter validation
       if (!params.query || params.query.trim().length === 0) {
-        return this.prepareResult(false, {
-          query: params.query || '',
-          results: [],
-          totalResults: 0,
-          searchCapabilities: this.getCapabilities(),
-          executionTime: Date.now() - startTime
-        }, 'Query parameter is required and cannot be empty', params.context);
+        return this.prepareResult(false, undefined, 'Query parameter is required and cannot be empty');
       }
 
       // Apply default workspace if not provided
@@ -226,14 +218,11 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       // Filter out nulls
       const finalResults = simplifiedResults.filter(r => r !== null);
 
-      const result = {
-        success: true,
-        query: params.query,
+      const result = this.prepareResult(true, {
         results: finalResults,
-        totalResults: finalResults.length,
-        searchCapabilities: this.getCapabilities(),
-        executionTime: Date.now() - startTime
-      };
+        total: finalResults.length,
+        hasMore: false
+      });
 
       // Generate nudges based on memory search results
       const nudges = this.generateMemorySearchNudges(results);
@@ -242,13 +231,7 @@ export class SearchMemoryMode extends BaseMode<SearchMemoryParams, SearchMemoryR
       
     } catch (error) {
       console.error('[SearchMemoryMode] Search error:', error);
-      return this.prepareResult(false, {
-        query: params.query || '',
-        results: [],
-        totalResults: 0,
-        searchCapabilities: this.getCapabilities(),
-        executionTime: Date.now() - startTime
-      }, `Memory search failed: ${getErrorMessage(error)}`, params.context);
+      return this.prepareResult(false, undefined, `Memory search failed: ${getErrorMessage(error)}`);
     }
   }
 

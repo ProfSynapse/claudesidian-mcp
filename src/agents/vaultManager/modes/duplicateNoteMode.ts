@@ -54,23 +54,13 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteParams, DuplicateNo
     try {
       // Validate parameters
       if (!params.sourcePath) {
-        return {
-          sourcePath: '',
-          targetPath: '',
-          success: false,
-          error: 'Source path is required'
-        };
+        return this.prepareResult(false, undefined, 'Source path is required');
       }
-      
+
       if (!params.targetPath) {
-        return {
-          sourcePath: params.sourcePath,
-          targetPath: '',
-          success: false,
-          error: 'Target path is required'
-        };
+        return this.prepareResult(false, undefined, 'Target path is required');
       }
-      
+
       // Perform the duplication
       const result = await FileOperations.duplicateNote(
         this.app,
@@ -79,29 +69,23 @@ export class DuplicateNoteMode extends BaseMode<DuplicateNoteParams, DuplicateNo
         params.overwrite || false,
         params.autoIncrement || false
       );
-      
+
       // Record activity in workspace memory if applicable
       await this.recordActivity(params, result);
-      
-      const response = {
+
+      const response = this.prepareResult(true, {
         sourcePath: result.sourcePath,
         targetPath: result.targetPath,
-        success: true,
         wasAutoIncremented: result.wasAutoIncremented,
         wasOverwritten: result.wasOverwritten
-      };
+      });
 
       // Generate nudges for duplicate operations
       const nudges = this.generateDuplicateNudges();
-      
+
       return addRecommendations(response, nudges);
     } catch (error) {
-      return {
-        sourcePath: params.sourcePath || '',
-        targetPath: params.targetPath || '',
-        success: false,
-        error: createErrorMessage('Failed to duplicate note: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to duplicate note: ', error));
     }
   }
   

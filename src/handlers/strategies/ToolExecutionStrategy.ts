@@ -294,10 +294,10 @@ export class ToolExecutionStrategy implements IRequestStrategy<ToolExecutionRequ
             processedParams
         );
 
+        // Update session context from result (for load operations that return new workspace context)
         if (this.sessionContextManager && processedParams.sessionId && result.workspaceContext) {
             this.sessionContextManager.updateFromResult(processedParams.sessionId, result);
         }
-
 
         return result;
     }

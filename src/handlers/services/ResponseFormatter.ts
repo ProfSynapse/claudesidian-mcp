@@ -1,15 +1,9 @@
 import { IResponseFormatter } from '../interfaces/IRequestHandlerServices';
 import { safeStringify } from '../../utils/jsonUtils';
-import {
-    formatSessionInstructions,
-    enhanceContextWithSessionInstructions
-} from '../../utils/sessionUtils';
-import { ResponseMinimizer } from './ResponseMinimizer';
 
 export class ResponseFormatter implements IResponseFormatter {
-    private responseMinimizer = new ResponseMinimizer();
 
-    formatToolExecutionResponse(result: any, sessionInfo?: any, context?: { mode?: string }): any {
+    formatToolExecutionResponse(result: any, sessionInfo?: any, _context?: { mode?: string }): any {
         // Check if result contains an error and format it appropriately
         if (result && !result.success && result.error) {
             return this.formatDetailedError(result, sessionInfo);
@@ -18,16 +12,13 @@ export class ResponseFormatter implements IResponseFormatter {
         // CRITICAL: Always show session ID changes/creation, regardless of shouldInjectInstructions
         // This ensures Claude Desktop always knows when its session ID was replaced or assigned
         if (sessionInfo && (sessionInfo.isNonStandardId || sessionInfo.isNewSession)) {
-            return this.formatWithSessionInstructions(result, sessionInfo, context?.mode);
+            return this.formatWithSessionInstructions(result, sessionInfo);
         }
-
-        // Minimize result before serialization for token efficiency
-        const minimizedResult = this.responseMinimizer.minimize(result, context?.mode);
 
         return {
             content: [{
                 type: "text",
-                text: safeStringify(minimizedResult)
+                text: safeStringify(result)
             }]
         };
     }
@@ -111,13 +102,7 @@ export class ResponseFormatter implements IResponseFormatter {
         };
     }
 
-    private needsSessionInstructions(sessionInfo: any, result: any): boolean {
-        return (sessionInfo.isNewSession || sessionInfo.isNonStandardId) &&
-               result &&
-               sessionInfo.shouldInjectInstructions;
-    }
-
-    private formatWithSessionInstructions(result: any, sessionInfo: any, modeName?: string): any {
+    private formatWithSessionInstructions(result: any, sessionInfo: any): any {
         this.formatSessionInstructions(sessionInfo.sessionId, result);
 
         let responseText = "";
@@ -141,9 +126,7 @@ export class ResponseFormatter implements IResponseFormatter {
             responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
         }
 
-        // Minimize result before serialization for token efficiency
-        const minimizedResult = this.responseMinimizer.minimize(result, modeName);
-        responseText += safeStringify(minimizedResult);
+        responseText += safeStringify(result);
 
         return {
             content: [{

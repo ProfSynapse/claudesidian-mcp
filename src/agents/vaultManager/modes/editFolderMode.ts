@@ -61,39 +61,23 @@ export class EditFolderMode extends BaseMode<EditFolderParams, EditFolderResult>
   async execute(params: EditFolderParams): Promise<EditFolderResult> {
     try {
       if (!params.path) {
-        return {
-          success: false,
-          error: 'Path is required'
-        };
+        return this.prepareResult(false, undefined, 'Path is required');
       }
-      
+
       if (!params.newPath) {
-        return {
-          success: false,
-          error: 'New path is required'
-        };
+        return this.prepareResult(false, undefined, 'New path is required');
       }
-      
+
       // Rename the folder using the Obsidian Vault API
       try {
         await this.app.vault.adapter.rename(params.path, params.newPath);
       } catch (renameError) {
-        return {
-          success: false,
-          error: createErrorMessage('Failed to rename folder: ', renameError)
-        };
+        return this.prepareResult(false, undefined, createErrorMessage('Failed to rename folder: ', renameError));
       }
-      
-      return {
-        success: true,
-        path: params.path,
-        newPath: params.newPath
-      };
+
+      return this.prepareResult(true, { path: params.path, newPath: params.newPath });
     } catch (error) {
-      return {
-        success: false,
-        error: createErrorMessage('Failed to edit folder: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to edit folder: ', error));
     }
   }
   

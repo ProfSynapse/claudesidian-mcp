@@ -37,15 +37,15 @@ export class CreateAgentMode extends BaseMode<CreateAgentParams, CreateAgentResu
       
       // Validate required fields
       if (!name?.trim()) {
-        return createResult<CreateAgentResult>(false, null, 'Name is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Name is required');
       }
       
       if (!description?.trim()) {
-        return createResult<CreateAgentResult>(false, null, 'Description is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Description is required');
       }
       
       if (!prompt?.trim()) {
-        return createResult<CreateAgentResult>(false, null, 'Agent prompt text is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<CreateAgentResult>(false, null, 'Agent prompt text is required');
       }
       
       // Create the prompt
@@ -56,10 +56,10 @@ export class CreateAgentMode extends BaseMode<CreateAgentParams, CreateAgentResu
         isEnabled
       });
       
-      const result = createResult<CreateAgentResult>(true, newPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      const result = createResult<CreateAgentResult>(true, newPrompt, undefined);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.createAgent);
     } catch (error) {
-      return createResult<CreateAgentResult>(false, null, `Failed to create agent: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<CreateAgentResult>(false, null, `Failed to create agent: ${error}`);
     }
   }
   

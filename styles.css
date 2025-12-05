@@ -4847,3 +4847,77 @@ a:hover {
 .nexus-empty-message {
     color: var(--text-muted);
 }
+
+/* =========================== */
+/* NEXUS MODEL LOADING OVERLAY */
+/* =========================== */
+
+.nexus-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--background-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.nexus-loading-overlay.is-visible {
+    opacity: 1;
+}
+
+.nexus-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 300px;
+    text-align: center;
+}
+
+.nexus-loading-spinner {
+    width: 48px;
+    height: 48px;
+    color: var(--interactive-accent);
+}
+
+.nexus-spinner {
+    width: 100%;
+    height: 100%;
+    animation: nexus-spinner-rotate 2s linear infinite;
+}
+
+@keyframes nexus-spinner-rotate {
+    100% { transform: rotate(360deg); }
+}
+
+.nexus-loading-status {
+    font-size: var(--font-ui-medium);
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.nexus-loading-progress-container {
+    width: 200px;
+    height: 4px;
+    background: var(--background-modifier-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.nexus-loading-progress-bar {
+    height: 100%;
+    background: var(--interactive-accent);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.nexus-loading-progress-text {
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+}

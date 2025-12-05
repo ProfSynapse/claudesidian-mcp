@@ -197,6 +197,7 @@ export class MCPToolExecution {
     toolResults: MCPToolResult[],
     provider: SupportedProvider
   ): Array<any> {
+    // NOTE: result.result is already minimized in executeToolCalls() - no need to minimize again
     if (provider === 'anthropic') {
       // Anthropic format: role='user', content array with tool_result objects
       return toolResults.map(result => ({
@@ -240,6 +241,7 @@ export class MCPToolExecution {
 
   /**
    * Build tool metadata for response
+   * NOTE: result.result is already minimized in executeToolCalls()
    */
   static buildToolMetadata(toolResults: MCPToolResult[]) {
     return {
@@ -248,7 +250,7 @@ export class MCPToolExecution {
       toolCalls: toolResults.length > 0 ? toolResults.map(result => ({
         id: result.id,
         name: result.name, // Include the tool name for UI display
-        result: result.result, // Include actual tool execution result
+        result: result.result, // Already minimized in executeToolCalls()
         success: result.success,
         error: result.error,
         executionTime: result.executionTime

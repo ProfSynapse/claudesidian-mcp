@@ -3,6 +3,20 @@
  *
  * Single Responsibility: Detect WebGPU availability and estimate VRAM capacity.
  * Used to determine if WebLLM can run and which quantization levels are supported.
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║  PLATFORM SUPPORT                                                          ║
+ * ╠═══════════════════════════════════════════════════════════════════════════╣
+ * ║  - macOS (Apple Silicon): Works natively via Metal                        ║
+ * ║  - Windows (NVIDIA/AMD): Requires updated GPU drivers + Vulkan support    ║
+ * ║  - Linux: Requires Vulkan support                                         ║
+ * ║                                                                            ║
+ * ║  TROUBLESHOOTING WINDOWS + NVIDIA:                                         ║
+ * ║  1. Update NVIDIA drivers to latest version (needs Vulkan support)        ║
+ * ║  2. Ensure Obsidian is up-to-date (needs recent Electron with WebGPU)     ║
+ * ║  3. Check chrome://gpu in Obsidian DevTools for WebGPU status             ║
+ * ║  4. Try enabling chrome://flags/#enable-unsafe-webgpu if available        ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  */
 
 import { VRAMInfo } from './types';
@@ -15,17 +29,40 @@ export class WebLLMVRAMDetector {
    */
   static async isWebGPUAvailable(): Promise<boolean> {
     if (typeof navigator === 'undefined') {
+      console.log('[WebLLMVRAMDetector] navigator is undefined (not in browser context)');
       return false;
     }
 
     if (!('gpu' in navigator)) {
+      console.log('[WebLLMVRAMDetector] WebGPU not available - navigator.gpu is missing');
+      console.log('[WebLLMVRAMDetector] This may be due to:');
+      console.log('  - Outdated Obsidian version (needs recent Electron)');
+      console.log('  - Outdated GPU drivers (NVIDIA: needs Vulkan support)');
+      console.log('  - WebGPU not enabled in Chromium flags');
       return false;
     }
 
     try {
       const gpu = (navigator as any).gpu;
-      const adapter = await gpu.requestAdapter();
-      return adapter !== null;
+
+      // Try different adapter options for better compatibility
+      // Windows/NVIDIA may need explicit high-performance preference
+      let adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+
+      if (!adapter) {
+        // Fallback: try without power preference
+        console.log('[WebLLMVRAMDetector] high-performance adapter not found, trying default...');
+        adapter = await gpu.requestAdapter();
+      }
+
+      if (!adapter) {
+        console.log('[WebLLMVRAMDetector] No WebGPU adapter found');
+        console.log('[WebLLMVRAMDetector] Platform:', navigator.platform || 'unknown');
+        console.log('[WebLLMVRAMDetector] Check GPU drivers are up-to-date');
+        return false;
+      }
+
+      return true;
     } catch (error) {
       console.warn('[WebLLMVRAMDetector] WebGPU check failed:', error);
       return false;
@@ -51,13 +88,23 @@ export class WebLLMVRAMDetector {
 
     // Check WebGPU support
     if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+      console.log('[WebLLMVRAMDetector] WebGPU API not available');
       this.cachedInfo = info;
       return info;
     }
 
     try {
       const gpu = (navigator as any).gpu;
-      const adapter = await gpu.requestAdapter();
+
+      // Request high-performance adapter first (important for Windows/NVIDIA)
+      console.log('[WebLLMVRAMDetector] Requesting WebGPU adapter...');
+      let adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+
+      if (!adapter) {
+        // Fallback to default adapter
+        console.log('[WebLLMVRAMDetector] High-performance adapter not found, trying default...');
+        adapter = await gpu.requestAdapter();
+      }
 
       if (!adapter) {
         this.cachedInfo = info;

@@ -32,20 +32,13 @@ export class DeleteNoteMode extends BaseMode<DeleteNoteParams, DeleteNoteResult>
    */
   async execute(params: DeleteNoteParams): Promise<DeleteNoteResult> {
     const { path } = params;
-    
+
     try {
       await FileOperations.deleteNote(this.app, path);
-      
-      return {
-        path,
-        success: true
-      };
+
+      return this.prepareResult(true, { path });
     } catch (error) {
-      return {
-        path,
-        success: false,
-        error: createErrorMessage('Failed to delete note: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to delete note: ', error));
     }
   }
   

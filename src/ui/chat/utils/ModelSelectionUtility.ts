@@ -60,16 +60,30 @@ export class ModelSelectionUtility {
         throw new Error('Plugin not found');
       }
 
+      // Try to get from in-memory settings first (more reliable)
+      const settingsManager = plugin.settings;
+      const inMemorySettings = settingsManager?.settings?.llmProviders?.defaultModel;
+
+      if (inMemorySettings?.provider && inMemorySettings?.model) {
+        return inMemorySettings;
+      }
+
+      // Fallback to raw data.json
       const pluginData = await plugin.loadData();
       const defaultModel = pluginData?.llmProviders?.defaultModel;
 
-      if (!defaultModel?.provider || !defaultModel?.model) {
-        throw new Error('No default model configured in settings');
+      if (defaultModel?.provider && defaultModel?.model) {
+        return defaultModel;
       }
 
-      return defaultModel;
+      // If still no default, return the hardcoded default (openai/gpt-4o)
+      // This prevents errors during initial setup
+      console.warn('[ModelSelectionUtility] No default model configured, using fallback');
+      return { provider: 'openai', model: 'gpt-4o' };
     } catch (error) {
-      throw error;
+      // Return fallback instead of throwing to prevent UI errors
+      console.warn('[ModelSelectionUtility] Error getting default model, using fallback:', error);
+      return { provider: 'openai', model: 'gpt-4o' };
     }
   }
 

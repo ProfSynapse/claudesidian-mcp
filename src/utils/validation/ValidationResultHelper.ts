@@ -191,14 +191,14 @@ export class ValidationResultHelper {
         { errorCode, hasValidationErrors: Array.isArray(error) }
       );
       
-      // Create standardized result - pass contextString as the context parameter
+      // Create standardized result - don't echo back context fields the LLM already knows
       return createResult<TResult>(
         false,
         null,
         errorMessage,
-        contextResult.workspaceContext,
-        contextResult.sessionId,
-        contextResult.contextString,
+        undefined,
+        undefined,
+        undefined,
         {
           errorCode,
           errorDetails,
@@ -257,14 +257,14 @@ export class ValidationResultHelper {
         { hasData: !!data, dataType: typeof data }
       );
       
-      // Create standardized result
+      // Create standardized result - don't echo back context fields the LLM already knows
       return createResult<TResult>(
         true,
         data,
         undefined,
-        contextResult.workspaceContext,
-        contextResult.sessionId,
-        contextResult.contextString,
+        undefined,
+        undefined,
+        undefined,
         {
           timestamp: Date.now(),
           mode: mode.name,

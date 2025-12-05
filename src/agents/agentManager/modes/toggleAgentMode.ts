@@ -35,15 +35,15 @@ export class ToggleAgentMode extends BaseMode<ToggleAgentParams, ToggleAgentResu
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<ToggleAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<ToggleAgentResult>(false, null, 'ID is required');
       }
       
       // Toggle the prompt
       const toggledPrompt = await this.storageService.togglePrompt(id.trim());
       
-      return createResult<ToggleAgentResult>(true, toggledPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ToggleAgentResult>(true, toggledPrompt, undefined);
     } catch (error) {
-      return createResult<ToggleAgentResult>(false, null, `Failed to toggle prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<ToggleAgentResult>(false, null, `Failed to toggle prompt: ${error}`);
     }
   }
   

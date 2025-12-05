@@ -1,22 +1,30 @@
 /**
  * WebLLM Model Specifications
+ * ============================================================================
  *
- * Data-driven model definitions following DRY principle.
- * Adding new quantizations or models requires only adding to this array.
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║  HOW TO ADD A NEW MODEL                                                    ║
+ * ╠═══════════════════════════════════════════════════════════════════════════╣
+ * ║  1. Convert model to WebLLM format (see local-models/ and                 ║
+ * ║     extract_text_model.py for the pipeline)                               ║
+ * ║  2. Upload to HuggingFace: professorsynapse/[model-name]-webllm           ║
+ * ║  3. Add MODEL_LIBS entry if using a new base model architecture           ║
+ * ║  4. Add entry to WEBLLM_MODELS array below                                ║
+ * ║  5. Run `npm run build` to verify                                         ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  *
- * Architecture Note:
- * Nexus Tools is based on Mistral 7B Instruct v0.3, so we can use WebLLM's
- * pre-built Mistral WASM library with our custom fine-tuned weights.
- * This avoids needing Emscripten SDK for WASM compilation.
+ * Naming Convention (see Nexus Versioning Spec.md):
+ * - Nexus-[SizeClass]-[ProviderCode][BaseVer].[BuildID]
+ * - Size Classes: Quark (1-4B), Electron (7-9B), Proton (12-19B), Atom (20-32B+)
+ * - Provider Codes: L=Llama, Q=Qwen, M=Mistral, G=Gemma, P=Phi
+ *
+ * Example model IDs:
+ * - nexus-quark-p2.0.1    → Phi-2 based 3B model, build 0.1
+ * - nexus-electron-q3.0.1 → Qwen3 based 8B model, build 0.1
+ * - nexus-proton-l3.0.1   → Llama3 based 14B model, build 0.1
  */
 
 import { WebLLMModelSpec } from './types';
-
-/**
- * HuggingFace repository for MLC-compiled Nexus Tools weights
- * Contains quantized weights from professorsynapse/nexus-tools_sft17
- */
-export const HF_MODEL_REPO = 'professorsynapse/nexus-tools-webllm';
 
 /**
  * Base URL for HuggingFace model downloads
@@ -24,45 +32,101 @@ export const HF_MODEL_REPO = 'professorsynapse/nexus-tools-webllm';
 export const HF_BASE_URL = 'https://huggingface.co';
 
 /**
- * Pre-built WebLLM model library for Mistral 7B architecture
- * Since Nexus Tools is fine-tuned from Mistral 7B Instruct v0.3,
- * we can reuse WebLLM's pre-built Mistral WASM library.
- *
- * WASM libraries are hosted on GitHub at mlc-ai/binary-mlc-llm-libs
- * IMPORTANT: Version must match the WebLLM CDN version (currently v0_2_80)
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║  MODEL LIBRARIES (WASM files)                                              ║
+ * ╠═══════════════════════════════════════════════════════════════════════════╣
+ * ║  WASM libraries are pre-built by MLC-AI and hosted on GitHub.             ║
+ * ║  Add new entries here when using a different base model architecture.     ║
+ * ║                                                                            ║
+ * ║  Find available libraries at:                                             ║
+ * ║  https://github.com/mlc-ai/binary-mlc-llm-libs/tree/main/web-llm-models   ║
+ * ║                                                                            ║
+ * ║  IMPORTANT: Version must match the WebLLM CDN version (currently v0_2_80) ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  */
-export const MISTRAL_MODEL_LIB_URL =
-  'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Mistral-7B-Instruct-v0.3-q4f16_1-ctx4k_cs1k-webgpu.wasm';
+export const MODEL_LIBS = {
+  // Qwen3-8B library for Nexus Electron models (7-9B)
+  QWEN3_8B: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Qwen3-8B-q4f16_1-ctx4k_cs1k-webgpu.wasm',
+
+  // Legacy Mistral 7B library (for old nexus-tools models)
+  MISTRAL_7B: 'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Mistral-7B-Instruct-v0.3-q4f16_1-ctx4k_cs1k-webgpu.wasm',
+
+  // ADD NEW LIBRARIES HERE:
+  // PHI_3_MINI: 'https://raw.githubusercontent.com/.../Phi-3-mini-4k-instruct-q4f16_1-...-webgpu.wasm',
+  // LLAMA3_8B: 'https://raw.githubusercontent.com/.../Llama-3-8B-Instruct-q4f16_1-...-webgpu.wasm',
+};
 
 /**
- * Available WebLLM models
- *
- * Based on professorsynapse/nexus-tools_sft17 (Mistral 7B fine-tuned for tool calling)
- * Uses [TOOL_CALLS] content format for function calling
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║  AVAILABLE WEBLLM MODELS                                                   ║
+ * ╠═══════════════════════════════════════════════════════════════════════════╣
+ * ║  ADD NEW MODELS TO THIS ARRAY                                              ║
+ * ║                                                                            ║
+ * ║  Each model needs:                                                         ║
+ * ║  - id: Unique lowercase identifier (e.g., 'nexus-electron-q3.0.1')        ║
+ * ║  - name: Display name for UI (e.g., 'Nexus Electron')                     ║
+ * ║  - apiName: Model ID used by WebLLM (usually same as id)                  ║
+ * ║  - contextWindow: Max context length in tokens                            ║
+ * ║  - maxTokens: Max output tokens                                           ║
+ * ║  - vramRequired: Approximate VRAM in GB                                   ║
+ * ║  - quantization: Quantization type (e.g., 'q4f16', 'q4f32')              ║
+ * ║  - huggingFaceRepo: Full repo path (professorsynapse/[name]-webllm)       ║
+ * ║  - modelLibUrl: WASM library from MODEL_LIBS above                        ║
+ * ║  - capabilities: What the model supports                                   ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  */
 export const WEBLLM_MODELS: WebLLMModelSpec[] = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEXUS ELECTRON - 8B Qwen3-based model fine-tuned for tool calling
+  // Uses <tool_call> XML format for function calling (native Qwen3 format)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'nexus-tools-q4f16',
-    name: 'Nexus 7B',
+    id: 'nexus-electron-q3.0.1',
+    name: 'Nexus Electron',
     provider: 'webllm',
-    apiName: 'nexus-tools-q4f16',
-    contextWindow: 32768,
-    maxTokens: 4096,
-    vramRequired: 5.0,
+    apiName: 'nexus-electron-q3.0.1',
+    // IMPORTANT: Must match WASM library's context window!
+    // The WASM is ctx4k (4096 tokens), NOT 32k
+    contextWindow: 4096,
+    maxTokens: 2048, // Max output = half of context to leave room for input
+    vramRequired: 5.5,
     quantization: 'q4f16',
-    huggingFaceRepo: HF_MODEL_REPO,
-    // Use pre-built Mistral library since Nexus Tools shares the same architecture
-    modelLibUrl: MISTRAL_MODEL_LIB_URL,
-    // Files are uploaded to repo root, not in quantization subdirectory
-    flatStructure: true,
+    huggingFaceRepo: 'professorsynapse/Nexus-Electron-Q3.0.1-webllm',
+    modelLibUrl: MODEL_LIBS.QWEN3_8B,
+    flatStructure: true, // Files at repo root, not in quantization subfolder
     capabilities: {
       supportsJSON: true,
       supportsImages: false,
-      supportsFunctions: true, // Via [TOOL_CALLS] format
+      supportsFunctions: true,
       supportsStreaming: true,
       supportsThinking: false,
     },
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADD NEW MODELS BELOW - Copy the template and fill in values
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // {
+  //   id: 'nexus-quark-p2.0.1',          // Unique ID
+  //   name: 'Nexus Quark',               // Display name
+  //   provider: 'webllm',
+  //   apiName: 'nexus-quark-p2.0.1',     // Usually same as id
+  //   contextWindow: 4096,               // Context window size
+  //   maxTokens: 2048,                   // Max output tokens
+  //   vramRequired: 2.5,                 // VRAM in GB
+  //   quantization: 'q4f16',             // Quantization type
+  //   huggingFaceRepo: 'professorsynapse/Nexus-Quark-P2.0.1-webllm',
+  //   modelLibUrl: MODEL_LIBS.PHI_3_MINI,  // Reference MODEL_LIBS above
+  //   flatStructure: true,
+  //   capabilities: {
+  //     supportsJSON: true,
+  //     supportsImages: false,
+  //     supportsFunctions: true,
+  //     supportsStreaming: true,
+  //     supportsThinking: false,
+  //   },
+  // },
 ];
 
 /**

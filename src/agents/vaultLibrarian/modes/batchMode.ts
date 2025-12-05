@@ -38,11 +38,11 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
     try {
       // Validate parameters
       if (!params.searches || params.searches.length === 0) {
-        return this.prepareResult(false, undefined, 'At least one search query is required', params.context);
+        return this.prepareResult(false, undefined, 'At least one search query is required');
       }
 
       if (params.searches.length > (params.maxConcurrency || 10)) {
-        return this.prepareResult(false, undefined, `Too many searches requested. Maximum allowed: ${params.maxConcurrency || 10}`, params.context);
+        return this.prepareResult(false, undefined, `Too many searches requested. Maximum allowed: ${params.maxConcurrency || 10}`);
       }
 
       const startTime = performance.now();
@@ -51,43 +51,29 @@ export class BatchMode extends BaseMode<BatchUniversalSearchParams, BatchUnivers
       // Execute searches with concurrency control
       const results = await this.executeConcurrentSearches(params.searches, maxConcurrency);
       
-      const totalExecutionTimeMS = performance.now() - startTime;
       const successful = results.filter(r => r.success);
       const failed = results.filter(r => !r.success);
 
       // Build response based on merge preference
       if (params.mergeResults) {
         const merged = this.mergeSearchResults(successful);
-        
-        return {
-          success: true,
+
+        return this.prepareResult(true, {
           merged: {
-            totalQueries: params.searches.length,
             totalResults: merged.totalResults,
             combinedCategories: merged.categories!
           },
-          stats: {
-            totalExecutionTimeMS,
-            queriesExecuted: params.searches.length,
-            queriesFailed: failed.length,
-            avgExecutionTimeMS: totalExecutionTimeMS / params.searches.length
-          }
-        };
+          queriesFailed: failed.length
+        });
       } else {
-        return {
-          success: true,
+        return this.prepareResult(true, {
           searches: results,
-          stats: {
-            totalExecutionTimeMS,
-            queriesExecuted: params.searches.length,
-            queriesFailed: failed.length,
-            avgExecutionTimeMS: totalExecutionTimeMS / params.searches.length
-          }
-        };
+          queriesFailed: failed.length
+        });
       }
       
     } catch (error) {
-      return this.prepareResult(false, undefined, `Batch search failed: ${getErrorMessage(error)}`, params.context);
+      return this.prepareResult(false, undefined, `Batch search failed: ${getErrorMessage(error)}`);
     }
   }
 

@@ -271,6 +271,10 @@ export type WebLLMErrorCode =
   | 'WORKER_ERROR'
   | 'MODULE_LOAD_FAILED'
   | 'ABORTED'
+  | 'CONFIG_INVALID'
+  | 'GPU_OOM'
+  | 'WEBGPU_ERROR'
+  | 'NETWORK_ERROR'
   | 'UNKNOWN';
 
 export class WebLLMError extends Error {

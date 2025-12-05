@@ -45,19 +45,11 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
     }
     
     async execute(params: CreateWorkspaceParameters): Promise<CreateWorkspaceResult> {
-        const startTime = Date.now();
-        
         try {
             // Get workspace service
             const serviceResult = await this.serviceIntegration.getWorkspaceService();
             if (!serviceResult.success || !serviceResult.service) {
-                return this.prepareResult(false, {
-                    error: `Workspace service not available: ${serviceResult.error}`,
-                    suggestions: [
-                        'Check that the plugin is properly initialized',
-                        'Try reloading the plugin'
-                    ]
-                }, `Workspace service not available: ${serviceResult.error}`, params.context);
+                return this.prepareResult(false, undefined, `Workspace service not available: ${serviceResult.error}`);
             }
             
             const workspaceService = serviceResult.service;
@@ -66,18 +58,7 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             const validationErrors = this.serviceIntegration.validateWorkspaceCreationParams(params);
             if (validationErrors.length > 0) {
                 const errorMessages = validationErrors.map(e => `${e.field}: ${e.requirement}`).join(', ');
-                return this.prepareResult(false, {
-                    error: `Validation failed: ${errorMessages}`,
-                    validationErrors: validationErrors,
-                    parameterHints: '💡 Required parameters: name, rootFolder, purpose, currentGoal, workflows (array with name, when, steps)',
-                    suggestions: [
-                        'Ensure all required parameters are provided',
-                        'Check that workflows is an array with at least one workflow',
-                        'Each workflow must have name, when, and steps properties',
-                        'steps should be a single string with steps separated by \\n (newline characters)'
-                    ],
-                    providedParams: params
-                }, `Validation error - ${errorMessages}`, params.context);
+                return this.prepareResult(false, undefined, `Validation failed: ${errorMessages}`);
             }
             
             // Ensure root folder exists
@@ -155,29 +136,14 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             
             // Save workspace
             const newWorkspace = await workspaceService.createWorkspace(workspaceData);
-            
-            // Generate validation prompt
-            const validationPrompt = this.generatePostCreationPrompt(params, allKeyFiles);
-            
+
             return this.prepareResult(true, {
                 workspaceId: newWorkspace.id,
-                workspace: newWorkspace,
-                validationPrompt: validationPrompt
-            }, undefined, `Created workspace "${params.name}" with purpose: ${params.purpose}`);
+                workspace: newWorkspace
+            });
             
         } catch (error) {
-            const errorMsg = createErrorMessage('Error creating workspace: ', error);
-            return this.prepareResult(false, {
-                error: errorMsg,
-                parameterHints: '💡 Check that all required parameters are correctly formatted:\n- name: string\n- rootFolder: string (existing folder path)\n- purpose: string\n- currentGoal: string\n- workflows: array of workflow objects (with steps as a string with \\n separators)',
-                suggestions: [
-                    'Verify that rootFolder path exists or can be created',
-                    'Ensure workflows array has at least one workflow',
-                    'Check that each workflow has name, when, and steps properties',
-                    'Verify steps is a single string with \\n separators, not an array: "Step 1\\nStep 2\\nStep 3"'
-                ],
-                providedParams: params
-            }, errorMsg, params.context);
+            return this.prepareResult(false, undefined, createErrorMessage('Error creating workspace: ', error));
         }
     }
     
@@ -217,32 +183,6 @@ export class CreateWorkspaceMode extends BaseMode<CreateWorkspaceParameters, Cre
             console.warn('Error detecting key files:', error);
             return [];
         }
-    }
-
-    private generatePostCreationPrompt(params: CreateWorkspaceParameters, allKeyFiles: string[]): string {
-        const prompts: string[] = [];
-
-        if (allKeyFiles.length > 0) {
-            prompts.push(`Setup complete with ${allKeyFiles.length} key files identified.`);
-        } else {
-            prompts.push('No key files detected. Create index.md, readme.md, or add "key: true" to file frontmatter to designate key files.');
-        }
-
-        if (!params.preferences || params.preferences.length === 0) {
-            prompts.push('Consider adding user preferences as you work in this workspace.');
-        }
-
-        if (!params.dedicatedAgentId) {
-            prompts.push('You can assign a dedicated AI agent to this workspace for specialized assistance.');
-        } else {
-            prompts.push('Dedicated agent configured for this workspace.');
-        }
-
-        prompts.push('Load the workspace to see the current directory structure and validate the setup.');
-
-        return prompts.length > 0
-            ? `Workspace created successfully! ${prompts.join(' ')}`
-            : 'Workspace created successfully! Load it to see the current directory structure.';
     }
 
     getParameterSchema(): any {

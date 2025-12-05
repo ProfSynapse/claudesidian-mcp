@@ -109,8 +109,8 @@ export class AgentInitializationService {
         const pluginSettings = (this.plugin as any)?.settings?.settings;
         const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
 
-        // Create LLM Provider Manager
-        llmProviderManager = new LLMProviderManager(llmProviderSettings);
+        // Create LLM Provider Manager with vault for Nexus (WebLLM) support
+        llmProviderManager = new LLMProviderManager(llmProviderSettings, undefined, this.app.vault);
 
         // Set VaultOperations for file reading from service manager
         if (this.serviceManager) {
@@ -159,7 +159,7 @@ export class AgentInitializationService {
         const pluginSettings = (this.plugin as any)?.settings?.settings;
         const llmProviderSettings = pluginSettings?.llmProviders || DEFAULT_LLM_PROVIDER_SETTINGS;
 
-        const minimalProviderManager = new LLMProviderManager(llmProviderSettings);
+        const minimalProviderManager = new LLMProviderManager(llmProviderSettings, undefined, this.app.vault);
         const { UsageTracker } = await import('../UsageTracker');
         const minimalUsageTracker = new UsageTracker('llm', pluginSettings);
 

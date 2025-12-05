@@ -83,35 +83,15 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
             created: state.created || (state as any).timestamp
           }));
 
-      // Prepare pagination metadata from DB result
-      const contextString = workspaceId
-        ? `Found ${sortedStates.length} state(s) on page ${statesResult.page + 1}/${statesResult.totalPages} in workspace ${workspaceId}`
-        : `Found ${sortedStates.length} state(s) on page ${statesResult.page + 1}/${statesResult.totalPages} across all workspaces`;
-
-      return this.prepareResult(
-        true,
-        {
-          states: enhancedStates,
-          total: statesResult.totalItems,
-          page: statesResult.page,
-          pageSize: statesResult.pageSize,
-          totalPages: statesResult.totalPages,
-          hasNextPage: statesResult.hasNextPage,
-          hasPreviousPage: statesResult.hasPreviousPage,
-          workspaceId: workspaceId,
-          filters: {
-            sessionId: params.context.sessionId,
-            tags: params.tags || [],
-            order: params.order || 'desc',
-            page: params.page,
-            pageSize: pageSize,
-            includeContext: params.includeContext
-          }
-        },
-        undefined,
-        contextString,
-        inheritedContext || undefined
-      );
+      return this.prepareResult(true, {
+        states: enhancedStates,
+        total: statesResult.totalItems,
+        page: statesResult.page,
+        pageSize: statesResult.pageSize,
+        totalPages: statesResult.totalPages,
+        hasNextPage: statesResult.hasNextPage,
+        hasPreviousPage: statesResult.hasPreviousPage
+      });
 
     } catch (error) {
       return this.prepareResult(false, undefined, createErrorMessage('Error listing states: ', error));
@@ -177,17 +157,6 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
     return extractContextFromParams(params);
   }
 
-  /**
-   * Prepare standardized result format
-   */
-  protected prepareResult(success: boolean, data?: any, contextData?: any, message?: string, workspaceContext?: any): StateResult {
-    return {
-      success,
-      data: data || {},
-      workspaceContext
-    };
-  }
-
   getParameterSchema(): any {
     const customSchema = {
       type: 'object',
@@ -241,15 +210,11 @@ export class ListStatesMode extends BaseMode<ListStatesParams, StateResult> {
         },
         data: {
           type: 'object',
-          description: 'State data'
+          description: 'State data with pagination'
         },
-        message: {
+        error: {
           type: 'string',
-          description: 'Result message'
-        },
-        workspaceContext: {
-          type: 'object',
-          description: 'Workspace context'
+          description: 'Error message if operation failed'
         }
       },
       required: ['success'],

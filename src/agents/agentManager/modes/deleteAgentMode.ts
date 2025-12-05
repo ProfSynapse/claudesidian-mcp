@@ -35,13 +35,13 @@ export class DeleteAgentMode extends BaseMode<DeleteAgentParams, DeleteAgentResu
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<DeleteAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<DeleteAgentResult>(false, null, 'ID is required');
       }
       
       // Check if prompt exists before deletion (unified lookup by ID or name)
       const existingPrompt = this.storageService.getPromptByNameOrId(id.trim());
       if (!existingPrompt) {
-        return createResult<DeleteAgentResult>(false, null, `Prompt "${id}" not found (searched by both name and ID)`, undefined, undefined, params.context.sessionId, params.context);
+        return createResult<DeleteAgentResult>(false, null, `Prompt "${id}" not found (searched by both name and ID)`);
       }
 
       // Delete the prompt using actual ID
@@ -50,9 +50,9 @@ export class DeleteAgentMode extends BaseMode<DeleteAgentParams, DeleteAgentResu
       return createResult<DeleteAgentResult>(true, {
         deleted,
         id: id.trim()
-      }, undefined, undefined, undefined, params.context.sessionId, params.context);
+      }, undefined);
     } catch (error) {
-      return createResult<DeleteAgentResult>(false, null, `Failed to delete prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<DeleteAgentResult>(false, null, `Failed to delete prompt: ${error}`);
     }
   }
   

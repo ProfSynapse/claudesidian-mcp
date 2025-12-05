@@ -65,7 +65,7 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
 
     try {
       if (!params.query || params.query.trim().length === 0) {
-        return this.prepareResult(false, undefined, 'Query parameter is required and cannot be empty', params.context);
+        return this.prepareResult(false, undefined, 'Query parameter is required and cannot be empty');
       }
 
       const searchParams = {
@@ -114,19 +114,15 @@ export class SearchContentMode extends BaseMode<ContentSearchParams, ContentSear
         executionTime: Math.round(executionTime)
       });
 
-      return {
-        success: true,
-        query: searchParams.query,
+      return this.prepareResult(true, {
         results: searchResults,
-        totalResults: searchResults.length,
-        executionTime: Math.round(executionTime)
-      };
+        total: searchResults.length,
+        hasMore: searchResults.length >= searchParams.limit
+      });
 
     } catch (error) {
-      const executionTime = performance.now() - startTime;
       console.error(`[${BRAND_NAME}] Content search failed:`, error);
-
-      return this.prepareResult(false, undefined, `Search failed: ${getErrorMessage(error)}`, params.context);
+      return this.prepareResult(false, undefined, `Search failed: ${getErrorMessage(error)}`);
     }
   }
 

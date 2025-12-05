@@ -553,32 +553,9 @@ Keep sessionId and workspaceId values EXACTLY as shown above throughout the conv
                 });
             }
 
-            // ========================================
-            // INJECT SESSION ID AND INSTRUCTIONS INTO RESULT
-            // ========================================
-
-            // Ensure result has the validated sessionId
-            if (result && typeof result === 'object') {
-                result.sessionId = validatedSessionId;
-                result.workspaceId = modeParams.workspaceContext.workspaceId;
-
-                // Add session instructions if this is a new session or non-standard ID
-                if (isNewSession || isNonStandardId) {
-                    const instructions = formatSessionInstructions(validatedSessionId);
-
-                    // Add to recommendations array (common pattern in results)
-                    if (!result.recommendations) {
-                        result.recommendations = [];
-                    }
-                    result.recommendations.unshift({
-                        type: 'session_management',
-                        message: instructions
-                    });
-
-                    // Also add as a top-level field for visibility
-                    result.sessionInstructions = instructions;
-                }
-            }
+            // Don't inject sessionId/workspaceId into result - LLM already knows these
+            // since it passed them in. Adding them wastes tokens.
+            // Session instructions only needed for new sessions via MCP Server path.
 
             return result;
             

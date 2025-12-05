@@ -37,12 +37,12 @@ export class UpdateAgentMode extends BaseMode<UpdateAgentParams, UpdateAgentResu
       
       // Validate required ID
       if (!id?.trim()) {
-        return createResult<UpdateAgentResult>(false, null, 'ID is required', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<UpdateAgentResult>(false, null, 'ID is required');
       }
       
       // Check that at least one field is being updated
       if (name === undefined && description === undefined && prompt === undefined && isEnabled === undefined) {
-        return createResult<UpdateAgentResult>(false, null, 'At least one field must be provided for update', undefined, undefined, params.context.sessionId, params.context);
+        return createResult<UpdateAgentResult>(false, null, 'At least one field must be provided for update');
       }
       
       // Prepare updates object
@@ -50,21 +50,21 @@ export class UpdateAgentMode extends BaseMode<UpdateAgentParams, UpdateAgentResu
       
       if (name !== undefined) {
         if (!name.trim()) {
-          return createResult<UpdateAgentResult>(false, null, 'Name cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Name cannot be empty');
         }
         updates.name = name.trim();
       }
       
       if (description !== undefined) {
         if (!description.trim()) {
-          return createResult<UpdateAgentResult>(false, null, 'Description cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Description cannot be empty');
         }
         updates.description = description.trim();
       }
       
       if (prompt !== undefined) {
         if (!prompt.trim()) {
-          return createResult<UpdateAgentResult>(false, null, 'Prompt text cannot be empty', undefined, undefined, params.context.sessionId, params.context);
+          return createResult<UpdateAgentResult>(false, null, 'Prompt text cannot be empty');
         }
         updates.prompt = prompt.trim();
       }
@@ -76,10 +76,10 @@ export class UpdateAgentMode extends BaseMode<UpdateAgentParams, UpdateAgentResu
       // Update the prompt
       const updatedPrompt = await this.storageService.updatePrompt(id.trim(), updates);
       
-      const result = createResult<UpdateAgentResult>(true, updatedPrompt, undefined, undefined, undefined, params.context.sessionId, params.context);
+      const result = createResult<UpdateAgentResult>(true, updatedPrompt, undefined);
       return addRecommendations(result, AGENT_MANAGER_RECOMMENDATIONS.updateAgent);
     } catch (error) {
-      return createResult<UpdateAgentResult>(false, null, `Failed to update prompt: ${error}`, undefined, undefined, params.context.sessionId, params.context);
+      return createResult<UpdateAgentResult>(false, null, `Failed to update prompt: ${error}`);
     }
   }
   

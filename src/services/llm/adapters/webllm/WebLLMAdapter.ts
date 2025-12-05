@@ -40,6 +40,9 @@ import {
 } from './types';
 import { WEBLLM_MODELS, getWebLLMModel, getModelsForVRAM } from './WebLLMModels';
 
+// Unique instance counter for debugging adapter recreation issues
+let webllmAdapterInstanceCount = 0;
+
 export class WebLLMAdapter extends BaseAdapter {
   readonly name = 'webllm';
   readonly baseUrl = ''; // Local model - no external URL
@@ -48,6 +51,7 @@ export class WebLLMAdapter extends BaseAdapter {
   private modelManager: WebLLMModelManager;
   private state: WebLLMState;
   private vault: Vault;
+  private instanceId: number;
 
   mcpConnector?: any; // For tool execution support
 
@@ -55,9 +59,18 @@ export class WebLLMAdapter extends BaseAdapter {
     // WebLLM doesn't need an API key
     super('', '', '', false);
 
+    this.instanceId = ++webllmAdapterInstanceCount;
+    console.log(`[NEXUS_DEBUG] Adapter created, instance #${this.instanceId}`);
+    // Log stack trace to see where adapters are being created from
+    if (this.instanceId > 1) {
+      console.warn(`[NEXUS_DEBUG] ⚠️ Multiple adapter instances (using shared engine)`);
+    }
+
     this.vault = vault;
     this.mcpConnector = mcpConnector;
-    this.engine = new WebLLMEngine();
+    // Use shared singleton engine - critical for multiple adapter instances
+    // This ensures the GPU-loaded model is shared across all adapters
+    this.engine = WebLLMEngine.getSharedInstance();
     this.modelManager = new WebLLMModelManager(vault);
 
     this.state = {
@@ -213,9 +226,14 @@ export class WebLLMAdapter extends BaseAdapter {
     }
 
     try {
+      const previousStatus = this.state.status;
       this.state.status = 'generating';
-      console.log('[WebLLMAdapter] Starting generation with messages:', messages.length);
-      console.log('[WebLLMAdapter] Options:', { temp: options?.temperature, maxTokens: options?.maxTokens });
+      const isToolContinuation = !!(options?.conversationHistory?.length);
+      console.log(`[NEXUS_DEBUG] Generation start instance=#${this.instanceId}`, {
+        statusChange: `${previousStatus} -> generating`,
+        messageCount: messages.length,
+        isToolContinuation,
+      });
 
       let accumulatedContent = '';
       let hasToolCallsFormat = false;
@@ -292,8 +310,10 @@ export class WebLLMAdapter extends BaseAdapter {
         }
       }
 
+      console.log(`[NEXUS_DEBUG] Generation complete instance=#${this.instanceId}, status -> ready`);
       this.state.status = 'ready';
     } catch (error) {
+      console.log(`[NEXUS_DEBUG] Generation error instance=#${this.instanceId}, status -> ready`);
       this.state.status = 'ready';
 
       if (error instanceof WebLLMError) {
@@ -348,7 +368,7 @@ export class WebLLMAdapter extends BaseAdapter {
       supportsImages: false,
       supportsFunctions: true, // Via [TOOL_CALLS] format
       supportsThinking: false,
-      maxContextWindow: 32768,
+      maxContextWindow: 4096, // Must match WASM library (ctx4k)
       supportedFeatures: ['streaming', 'function_calling', 'local', 'privacy', 'offline'],
     };
   }
@@ -433,6 +453,15 @@ export class WebLLMAdapter extends BaseAdapter {
    * Will auto-load the default model if not already loaded
    */
   private async ensureModelLoadedAsync(): Promise<void> {
+    const engineLoaded = this.engine?.isModelLoaded();
+
+    // DIAGNOSTIC: Log current state on every call with instance ID
+    console.log(`[NEXUS_DEBUG] ensureModelLoaded instance=#${this.instanceId}`, {
+      status: this.state.status,
+      loadedModel: this.state.loadedModel,
+      engineLoaded,
+    });
+
     if (this.state.status === 'unavailable') {
       throw new LLMProviderError(
         'WebGPU not available',
@@ -441,10 +470,32 @@ export class WebLLMAdapter extends BaseAdapter {
       );
     }
 
-    // If model is already loaded, we're good
-    if (this.state.loadedModel && this.state.status === 'ready') {
+    // If engine has model loaded, we're good - trust the shared engine state
+    // This handles: tool continuation, multiple adapter instances, etc.
+    if (engineLoaded) {
+      // Sync adapter state with engine state
+      const engineModelId = this.engine.getCurrentModelId();
+      if (engineModelId && !this.state.loadedModel) {
+        console.log(`[NEXUS_DEBUG] Syncing adapter state with engine, model=${engineModelId}`);
+        this.state.loadedModel = engineModelId;
+        this.state.status = 'ready';
+      }
+      console.log(`[NEXUS_DEBUG] Engine has model, skipping reload instance=#${this.instanceId}`);
       return;
     }
+
+    // Also check if status is ready (normal case)
+    if (this.state.loadedModel && this.state.status === 'ready') {
+      console.log(`[NEXUS_DEBUG] Model ready, skipping reload instance=#${this.instanceId}`);
+      return;
+    }
+
+    // DIAGNOSTIC: Log why we're continuing (model NOT loaded)
+    console.warn(`[NEXUS_DEBUG] ⚠️ RELOAD TRIGGERED instance=#${this.instanceId}`, {
+      hasLoadedModel: !!this.state.loadedModel,
+      status: this.state.status,
+      engineLoaded,
+    });
 
     // If currently loading, wait
     if (this.state.status === 'loading') {

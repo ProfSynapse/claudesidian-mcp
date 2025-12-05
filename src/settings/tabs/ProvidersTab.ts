@@ -138,15 +138,15 @@ export class ProvidersTab {
         this.services = services;
         this.staticModelsService = StaticModelsService.getInstance();
 
-        // Initialize provider manager
+        // Initialize provider manager with vault for Nexus support
         if (this.services.llmProviderSettings) {
-            this.providerManager = new LLMProviderManager(this.services.llmProviderSettings);
+            this.providerManager = new LLMProviderManager(this.services.llmProviderSettings, undefined, this.services.app.vault);
         } else {
             // Create empty manager
             this.providerManager = new LLMProviderManager({
                 providers: {},
                 defaultModel: { provider: '', model: '' }
-            });
+            }, undefined, this.services.app.vault);
         }
 
         this.render();
@@ -214,7 +214,8 @@ export class ProvidersTab {
                 dropdown.setValue(settings.defaultModel.provider);
                 dropdown.onChange(async (value) => {
                     settings.defaultModel.provider = value;
-                    settings.defaultModel.model = ''; // Reset model
+                    // Set a sensible default model for the new provider
+                    settings.defaultModel.model = this.getDefaultModelForProvider(value);
                     await this.saveSettings();
                     this.render(); // Re-render to update model dropdown and thinking section
                 });
@@ -225,6 +226,30 @@ export class ProvidersTab {
 
         // Default Thinking settings
         this.renderThinkingSection(section, settings);
+    }
+
+    /**
+     * Get a default model for the given provider
+     */
+    private getDefaultModelForProvider(providerId: string): string {
+        // WebLLM: use first available model
+        if (providerId === 'webllm') {
+            return WEBLLM_MODELS[0]?.id || '';
+        }
+
+        // Ollama: model is configured in provider settings
+        if (providerId === 'ollama') {
+            const settings = this.getSettings();
+            return settings.providers.ollama?.ollamaModel || '';
+        }
+
+        // Standard providers: use first model from static list
+        try {
+            const models = this.staticModelsService.getModelsForProvider(providerId);
+            return models[0]?.id || '';
+        } catch {
+            return '';
+        }
     }
 
     /**
@@ -276,7 +301,14 @@ export class ProvidersTab {
 
                     const current = settings.defaultModel.model;
                     const exists = WEBLLM_MODELS.some(m => m.id === current);
-                    dropdown.setValue(exists ? current : (WEBLLM_MODELS[0]?.id || ''));
+                    const selectedModel = exists ? current : (WEBLLM_MODELS[0]?.id || '');
+                    dropdown.setValue(selectedModel);
+
+                    // Save fallback value if model wasn't set or doesn't exist
+                    if (!exists && selectedModel && settings.defaultModel.model !== selectedModel) {
+                        settings.defaultModel.model = selectedModel;
+                        this.saveSettings();
+                    }
 
                     dropdown.onChange(async (value) => {
                         settings.defaultModel.model = value;
@@ -309,10 +341,13 @@ export class ProvidersTab {
 
                         const current = settings.defaultModel.model;
                         const exists = models.some(m => m.id === current);
-                        dropdown.setValue(exists ? current : models[0].id);
+                        const selectedModel = exists ? current : models[0].id;
+                        dropdown.setValue(selectedModel);
 
-                        if (!exists && models.length > 0) {
-                            settings.defaultModel.model = models[0].id;
+                        // Save fallback value if model wasn't set or doesn't exist
+                        if (!exists && models.length > 0 && settings.defaultModel.model !== selectedModel) {
+                            settings.defaultModel.model = selectedModel;
+                            this.saveSettings();
                         }
                     }
 

@@ -32,20 +32,13 @@ export class DeleteFolderMode extends BaseMode<DeleteFolderParams, DeleteFolderR
    */
   async execute(params: DeleteFolderParams): Promise<DeleteFolderResult> {
     const { path, recursive } = params;
-    
+
     try {
       await FileOperations.deleteFolder(this.app, path, recursive);
-      
-      return {
-        path,
-        success: true
-      };
+
+      return this.prepareResult(true, { path });
     } catch (error) {
-      return {
-        path,
-        success: false,
-        error: createErrorMessage('Failed to delete folder: ', error)
-      };
+      return this.prepareResult(false, undefined, createErrorMessage('Failed to delete folder: ', error));
     }
   }
   
